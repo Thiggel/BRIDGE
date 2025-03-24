@@ -1,8 +1,7 @@
 defaults:
   - _self_
-  - /pretrain/imagenet-100/mocov3
-  - /bridge/bridge@_here_.bridge
-  - /bridge/base@_here_
+  - /bridge/base
+  - /pretrain/imagenet-100/mocov3@_here_
 
 name: "mocov3-imagenet100-lt"
 

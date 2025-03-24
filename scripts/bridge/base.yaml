@@ -1,3 +1,5 @@
+bridge: ${hydra:compose:/bridge/bridge}
+
 checkpoint:
   dir: /var/scratch/ssalehid/BRIDGE/checkpoints
   enabled: True
