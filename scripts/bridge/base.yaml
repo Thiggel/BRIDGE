@@ -1,6 +1,3 @@
-defaults:
-  - bridge
-
 checkpoint:
   dir: /var/scratch/ssalehid/BRIDGE/checkpoints
   enabled: True
