@@ -63,14 +63,13 @@ else:
 
 @hydra.main(version_base="1.2")
 def main(cfg: DictConfig):
+    print(cfg)
+    exit()
     # hydra doesn't allow us to add new keys for "safety"
     # set_struct(..., False) disables this behavior and allows us to add more parameters
     # without making the user specify every single thing about the model
     OmegaConf.set_struct(cfg, False)
     cfg = parse_cfg(cfg)
-
-    print(cfg)
-    exit()
 
     seed_everything(cfg.seed)
 
