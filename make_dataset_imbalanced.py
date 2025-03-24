@@ -11,7 +11,7 @@ class Imbalancedness:
     def __init__(self, num_classes: int):
         self.num_classes = num_classes
 
-    def get_imbalance(self, class_index: int) -> float:
+    def get_imbalance(self, class_indices: torch.Tensor) -> torch.Tensor:
         pass
 
 
@@ -93,13 +93,25 @@ class NoImbalancedness(Imbalancedness):
         a uniform way.
         """
         total_imbalance = 0.0
-        for class_idx in range(self.num_classes):
-            total_imbalance += self.get_power_law_imbalance(class_idx)
+        class_indices = torch.arange(self.num_classes)
+        imbalance_values = self.power_law_imbalance.get_imbalance(class_indices)
+        return imbalance_values.mean().item()
 
-        return total_imbalance / self.num_classes
+    def get_imbalance(self, class_indices: torch.Tensor) -> torch.Tensor:
+        """
+        Return the same imbalance value for all classes to create a balanced dataset
+        with the same total number of samples as the imbalanced version
+        """
+        if not isinstance(class_indices, torch.Tensor):
+            class_indices = torch.tensor(class_indices)
 
-    def get_imbalance(self, class_index: int) -> float:
-        return self.total_imbalance
+        # Return the same value for all classes
+        return torch.full_like(
+            class_indices,
+            self.total_imbalance,
+            dtype=torch.float32,
+            device=class_indices.device,
+        )
 
 
 class Imbalancer:
@@ -132,13 +144,29 @@ class Imbalancer:
         non_selected_indices_list = non_selected_indices.cpu().tolist()
 
         remaining = len(selected_indices_list) / labels.size(0)
-        print("\n--- Portion of dataset remaining: ", remaining, "\n ---")
+        print(
+            f"\n--- Portion of dataset remaining: {remaining:.4f} ({len(selected_indices_list)}/{labels.size(0)}) ---\n"
+        )
 
         return selected_indices_list, non_selected_indices_list
 
     def get_filtered_dataset(self):
-        indices, remaining = self._create_indices()
-        return self.dataset.select(indices), self.dataset.select(remaining)
+        selected_indices, non_selected_indices = self._create_indices()
+        return self.dataset.select(selected_indices), self.dataset.select(
+            non_selected_indices
+        )
+
+
+def count_samples_per_class(dataset):
+    """Helper function to analyze class distribution"""
+    label_counts = {}
+    for item in dataset:
+        label = item["label"]
+        if label not in label_counts:
+            label_counts[label] = 0
+        label_counts[label] += 1
+
+    return {k: label_counts.get(k, 0) for k in range(max(label_counts.keys()) + 1)}
 
 
 def main():
@@ -148,17 +176,26 @@ def main():
     parser.add_argument("--max-samples", type=int, default=1280)
     parser.add_argument("--min-samples", type=int, default=5)
     parser.add_argument("--dataset-name", type=str, default="imagenet-100")
+    parser.add_argument(
+        "--push-to-hub", action="store_true", help="Push datasets to HuggingFace Hub"
+    )
+    parser.add_argument(
+        "--analyze", action="store_true", help="Print class distribution stats"
+    )
     args = parser.parse_args()
 
     load_dotenv()
-    login(token=os.environ["HUGGINGFACE_TOKEN"])
+    if args.push_to_hub:
+        login(token=os.environ["HUGGINGFACE_TOKEN"])
 
     dataset = load_dataset(args.dataset, trust_remote_code=True)
     all_splits = [dataset[split] for split in dataset.keys()]
     combined_dataset = concatenate_datasets(all_splits)
 
     num_classes = len(combined_dataset.features["label"].names)
+    print(f"Dataset has {num_classes} classes and {len(combined_dataset)} samples")
 
+    # Create imbalanced dataset
     power_law_imbalance = PowerLawImbalancedness(
         num_classes, args.pareto_alpha, args.max_samples, args.min_samples
     )
@@ -166,18 +203,41 @@ def main():
     power_law_imbalancer = Imbalancer(combined_dataset, power_law_imbalance)
     imbalanced_dataset, removed_dataset = power_law_imbalancer.get_filtered_dataset()
 
-    imbalanced_dataset.push_to_hub("flaitenberger/imagenet-100-LT")
-    removed_dataset.push_to_hub("flaitenberger/imagenet-100-LT-removed-data")
+    print(f"Imbalanced dataset: {len(imbalanced_dataset)} samples")
+    print(f"Removed dataset: {len(removed_dataset)} samples")
 
+    if args.analyze:
+        imbalanced_counts = count_samples_per_class(imbalanced_dataset)
+        print("\nClass distribution in imbalanced dataset:")
+        for class_idx, count in sorted(imbalanced_counts.items()):
+            print(f"Class {class_idx}: {count} samples")
+
+    if args.push_to_hub:
+        print("Pushing imbalanced dataset to Hub...")
+        imbalanced_dataset.push_to_hub(f"flaitenberger/{args.dataset_name}-LT")
+        removed_dataset.push_to_hub(
+            f"flaitenberger/{args.dataset_name}-LT-removed-data"
+        )
+
+    # Create balanced dataset with same amount of data
     balanced_imbalance = NoImbalancedness(
         num_classes, args.pareto_alpha, args.max_samples, args.min_samples
     )
 
     balanced_imbalancer = Imbalancer(combined_dataset, balanced_imbalance)
+    balanced_dataset, balanced_removed = balanced_imbalancer.get_filtered_dataset()
 
-    balanced_dataset, removed_dataset = balanced_imbalancer.get_filtered_dataset()
+    print(f"Balanced dataset: {len(balanced_dataset)} samples")
 
-    balanced_dataset.push_to_hub("flaitenberger/imagenet-100-LT-balanced")
+    if args.analyze:
+        balanced_counts = count_samples_per_class(balanced_dataset)
+        print("\nClass distribution in balanced dataset:")
+        for class_idx, count in sorted(balanced_counts.items()):
+            print(f"Class {class_idx}: {count} samples")
+
+    if args.push_to_hub:
+        print("Pushing balanced dataset to Hub...")
+        balanced_dataset.push_to_hub(f"flaitenberger/{args.dataset_name}-LT-balanced")
 
 
 if __name__ == "__main__":
