@@ -1,0 +1,10 @@
+defaults:
+  - base
+  # Reference the original MoCo v3 config but don't let it override base settings
+  - /scripts/pretrain/cifar/mocov3@_here_
+
+name: "mocov3-imagenet100-lt"
+
+method: "mocov3"
+backbone:
+  name: "resnet50"
