@@ -49,7 +49,9 @@ def build_custom_pipeline():
                 transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
+                transforms.Normalize(
+                    mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD
+                ),
             ]
         ),
         "T_val": transforms.Compose(
@@ -57,7 +59,9 @@ def build_custom_pipeline():
                 transforms.Resize(256),  # resize shorter
                 transforms.CenterCrop(224),  # take center crop
                 transforms.ToTensor(),
-                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
+                transforms.Normalize(
+                    mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD
+                ),
             ]
         ),
     }
@@ -115,7 +119,9 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
                 transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
+                transforms.Normalize(
+                    mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD
+                ),
             ]
         ),
         "T_val": transforms.Compose(
@@ -123,7 +129,9 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
                 transforms.Resize(256),  # resize shorter
                 transforms.CenterCrop(224),  # take center crop
                 transforms.ToTensor(),
-                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
+                transforms.Normalize(
+                    mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD
+                ),
             ]
         ),
     }
@@ -146,6 +154,68 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
     T_val = pipeline["T_val"]
 
     return T_train, T_val
+
+
+def prepare_hf_datasets(
+    dataset_name: str,
+    train_transform: Callable,
+    val_transform: Callable,
+    streaming: bool = False,
+    image_key: str = "image",
+    label_key: str = "label",
+    cache_dir: Optional[str] = None,
+    token: Optional[str] = None,
+    **dataset_kwargs
+) -> Tuple[HuggingFaceDatasetWrapper, HuggingFaceDatasetWrapper]:
+    """Prepare HuggingFace datasets.
+
+    Args:
+        dataset_name: HuggingFace dataset name or path
+        train_transform: transformation for training dataset
+        val_transform: transformation for validation dataset
+        streaming: whether to use streaming mode
+        image_key: key for images in dataset
+        label_key: key for labels in dataset
+        cache_dir: directory to cache dataset
+        token: HuggingFace API token for private datasets
+        dataset_kwargs: additional kwargs for load_dataset
+
+    Returns:
+        train_dataset: training dataset
+        val_dataset: validation dataset
+    """
+    train_dataset = HuggingFaceDatasetWrapper(
+        dataset_name=dataset_name,
+        split="train",
+        transform=train_transform,
+        streaming=streaming,
+        image_key=image_key,
+        label_key=label_key,
+        cache_dir=cache_dir,
+        token=token,
+        **dataset_kwargs
+    )
+
+    # Check for validation or test split
+    val_split = (
+        "validation"
+        if "validation" in load_dataset(dataset_name, streaming=streaming).keys()
+        else "test"
+    )
+
+    val_dataset = HuggingFaceDatasetWrapper(
+        dataset_name=dataset_name,
+        split=val_split,
+        transform=val_transform,
+        streaming=streaming,
+        image_key=image_key,
+        label_key=label_key,
+        cache_dir=cache_dir,
+        token=token,
+        **dataset_kwargs
+    )
+
+    return train_dataset, val_dataset
 
 
 def prepare_datasets(
@@ -178,14 +248,25 @@ def prepare_datasets(
     """
 
     if train_data_path is None:
-        sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+        sandbox_folder = Path(
+            os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        )
         train_data_path = sandbox_folder / "datasets"
 
     if val_data_path is None:
-        sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+        sandbox_folder = Path(
+            os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        )
         val_data_path = sandbox_folder / "datasets"
 
-    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom"]
+    assert dataset in [
+        "cifar10",
+        "cifar100",
+        "stl10",
+        "imagenet",
+        "imagenet100",
+        "custom",
+    ]
 
     if dataset in ["cifar10", "cifar100"]:
         DatasetClass = vars(torchvision.datasets)[dataset.upper()]
@@ -243,7 +324,10 @@ def prepare_datasets(
 
 
 def prepare_dataloaders(
-    train_dataset: Dataset, val_dataset: Dataset, batch_size: int = 64, num_workers: int = 4
+    train_dataset: Dataset,
+    val_dataset: Dataset,
+    batch_size: int = 64,
+    num_workers: int = 4,
 ) -> Tuple[DataLoader, DataLoader]:
     """Wraps a train and a validation dataset with a DataLoader.
 

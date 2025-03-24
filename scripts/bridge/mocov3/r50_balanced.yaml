@@ -1,0 +1,9 @@
+defaults:
+  - base
+  - /scripts/pretrain/cifar/mocov3@_here_
+
+name: "mocov3-imagenet100-lt"
+
+method: "mocov3"
+backbone:
+  name: "resnet50"

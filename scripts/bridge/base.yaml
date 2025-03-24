@@ -1,10 +1,18 @@
 defaults:
-  - base
-  # Reference the original MoCo v3 config but don't let it override base settings
-  - /scripts/pretrain/cifar/mocov3@_here_
+  - bridge
 
-name: "mocov3-imagenet100-lt"
+checkpoint:
+  dir: /var/scratch/ssalehid/BRIDGE/checkpoints
+  enabled: True
+  frequency: 100
+  keep_prev: True
 
-method: "mocov3"
-backbone:
-  name: "resnet50"
+wandb:
+  enabled: True
+  project: bridge
+  entity: filipelaitenberger
+
+precision: 32
+devices: auto
+accelerator: "gpu"
+strategy: "ddp"
