@@ -1,6 +1,6 @@
 defaults:
   - base
-  - /scripts/pretrain/cifar/mocov3@_here_
+  - pretrain/imagenet100/mocov3@_here_
 
 name: "mocov3-imagenet100-lt"
 
