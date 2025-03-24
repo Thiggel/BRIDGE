@@ -1,5 +1,5 @@
 defaults:
-  - bridge
+  - bridge@bridge
 
 checkpoint:
   dir: /var/scratch/ssalehid/BRIDGE/checkpoints
