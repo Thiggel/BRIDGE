@@ -1,4 +1,11 @@
-bridge: ${hydra:compose:/bridge/bridge}
+bridge:
+  num_epochs_per_cycle: 10
+  use_ood_augmentation: True
+  num_cycles: 5
+  num_clusters: 5
+  num_ood_points_per_cluster: 10
+  diffusion_model: "stabilityai/stable-diffusion-2-1"
+  n_augmentations_per_sample: 5
 
 checkpoint:
   dir: /var/scratch/ssalehid/BRIDGE/checkpoints
