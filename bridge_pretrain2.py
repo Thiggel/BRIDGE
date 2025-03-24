@@ -64,7 +64,7 @@ else:
 
 @hydra.main(version_base="1.2")
 def main(cfg: DictConfig):
-    print(json.dumps(cfg, indent=4))
+    print(cfg.to_yaml())
     exit()
     # hydra doesn't allow us to add new keys for "safety"
     # set_struct(..., False) disables this behavior and allows us to add more parameters
