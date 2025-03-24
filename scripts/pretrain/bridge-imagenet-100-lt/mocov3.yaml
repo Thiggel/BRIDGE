@@ -10,7 +10,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-imagenet100"
+name: "mocov3-imagenet100-lt"
 method: "mocov3"
 backbone:
   name: "resnet18"

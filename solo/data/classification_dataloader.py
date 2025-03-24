@@ -29,7 +29,6 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
 
-from solo.data.hf_dataset import HuggingFaceDatasetWrapper
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -156,68 +155,6 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
     T_val = pipeline["T_val"]
 
     return T_train, T_val
-
-
-def prepare_hf_datasets(
-    dataset_name: str,
-    train_transform: Callable,
-    val_transform: Callable,
-    streaming: bool = False,
-    image_key: str = "image",
-    label_key: str = "label",
-    cache_dir: Optional[str] = None,
-    token: Optional[str] = None,
-    **dataset_kwargs
-) -> Tuple[HuggingFaceDatasetWrapper, HuggingFaceDatasetWrapper]:
-    """Prepare HuggingFace datasets.
-
-    Args:
-        dataset_name: HuggingFace dataset name or path
-        train_transform: transformation for training dataset
-        val_transform: transformation for validation dataset
-        streaming: whether to use streaming mode
-        image_key: key for images in dataset
-        label_key: key for labels in dataset
-        cache_dir: directory to cache dataset
-        token: HuggingFace API token for private datasets
-        dataset_kwargs: additional kwargs for load_dataset
-
-    Returns:
-        train_dataset: training dataset
-        val_dataset: validation dataset
-    """
-    train_dataset = HuggingFaceDatasetWrapper(
-        dataset_name=dataset_name,
-        split="train",
-        transform=train_transform,
-        streaming=streaming,
-        image_key=image_key,
-        label_key=label_key,
-        cache_dir=cache_dir,
-        token=token,
-        **dataset_kwargs
-    )
-
-    # Check for validation or test split
-    val_split = (
-        "validation"
-        if "validation" in load_dataset(dataset_name, streaming=streaming).keys()
-        else "test"
-    )
-
-    val_dataset = HuggingFaceDatasetWrapper(
-        dataset_name=dataset_name,
-        split=val_split,
-        transform=val_transform,
-        streaming=streaming,
-        image_key=image_key,
-        label_key=label_key,
-        cache_dir=cache_dir,
-        token=token,
-        **dataset_kwargs
-    )
-
-    return train_dataset, val_dataset
 
 
 def prepare_datasets(

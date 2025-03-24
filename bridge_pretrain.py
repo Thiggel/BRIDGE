@@ -1,382 +1,254 @@
+# Copyright 2023 solo-learn development team.
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to use,
+# copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
+# Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+# PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+# OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+
+import inspect
 import os
-from typing import List, Tuple
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, Dataset
+import json
 
-from omegaconf import DictConfig, OmegaConf
 import hydra
-from pytorch_lightning import Trainer
-from datasets import Dataset as HFDataset
-from huggingface_hub import HfApi
+import torch
+from lightning.pytorch import Trainer, seed_everything
+from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.loggers.wandb import WandbLogger
+from lightning.pytorch.strategies.ddp import DDPStrategy
+from omegaconf import DictConfig, OmegaConf
+from solo.args.pretrain import parse_cfg
+from solo.data.classification_dataloader import (
+    prepare_data as prepare_data_classification,
+)
+from solo.data.pretrain_dataloader import (
+    FullTransformPipeline,
+    NCropAugmentation,
+    build_transform_pipeline,
+    prepare_dataloader,
+    prepare_datasets,
+)
+from solo.methods import METHODS
+from solo.utils.auto_resumer import AutoResumer
+from solo.utils.checkpointer import Checkpointer
+from solo.utils.misc import make_contiguous, omegaconf_select
 
-from solo_learn.methods.base import BaseMethod
-from solo_learn.utils.misc import make_contiguous
-from solo_learn.data.dataset import prepare_datasets, prepare_hf_datasets
-from solo_learn.data.classification_dataloader import prepare_dataloaders
-from solo_learn.utils.auto_resumer import AutoResumer
-from solo_learn.utils.checkpointer import Checkpointer
+try:
+    from solo.data.dali_dataloader import (
+        PretrainDALIDataModule,
+        build_transform_pipeline_dali,
+    )
+except ImportError:
+    _dali_avaliable = False
+else:
+    _dali_avaliable = True
 
-
-class OODDetector:
-    """Detects out-of-distribution samples using Gaussian Mixture Models."""
-
-    def __init__(self, num_clusters: int, num_ood_points_per_cluster: int):
-        """
-        Args:
-            num_clusters: number of clusters to use in GMM
-            num_ood_points_per_cluster: number of OOD points to select per cluster
-        """
-        self.num_clusters = num_clusters
-        self.num_ood_points_per_cluster = num_ood_points_per_cluster
-
-    def fit_and_detect(
-        self, features: np.ndarray, labels: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Fits a GMM to the features and detects OOD samples.
-
-        Args:
-            features: feature vectors from the model (N, D)
-            labels: class labels (N,)
-
-        Returns:
-            ood_indices: indices of OOD samples (K*C,) where K=num_ood_points_per_cluster, C=num_clusters
-            ood_labels: class labels of OOD samples (K*C,)
-            cluster_assignments: cluster assignments for all samples (N,)
-        """
-        from sklearn.mixture import GaussianMixture
-
-        # Fit GMM
-        gmm = GaussianMixture(n_components=self.num_clusters, random_state=0)
-        cluster_assignments = gmm.fit_predict(features)
-
-        # Get probabilities
-        probs = gmm.score_samples(features)
-
-        # For each cluster, find the samples with lowest probability (most OOD)
-        ood_indices = []
-        for cluster_idx in range(self.num_clusters):
-            cluster_mask = cluster_assignments == cluster_idx
-            cluster_probs = probs[cluster_mask]
-            cluster_indices = np.where(cluster_mask)[0]
-
-            # Get indices of samples with lowest probabilities (most OOD)
-            if len(cluster_indices) <= self.num_ood_points_per_cluster:
-                # If cluster is small, take all samples
-                ood_cluster_indices = cluster_indices
-            else:
-                # Sort by probability (ascending) and take lowest K
-                sorted_idx = np.argsort(cluster_probs)[
-                    : self.num_ood_points_per_cluster
-                ]
-                ood_cluster_indices = cluster_indices[sorted_idx]
-
-            ood_indices.extend(ood_cluster_indices)
-
-        ood_indices = np.array(ood_indices)
-        ood_labels = labels[ood_indices]
-
-        return ood_indices, ood_labels, cluster_assignments
+try:
+    from solo.utils.auto_umap import AutoUMAP
+except ImportError:
+    _umap_available = False
+else:
+    _umap_available = True
 
 
-class DiffusionAugmenter:
-    """Augments images using a diffusion model."""
-
-    def __init__(self, model_name: str = "stabilityai/stable-diffusion-2-1"):
-        """
-        Args:
-            model_name: name of the diffusion model to use
-        """
-        self.model_name = model_name
-
-    def generate_similar_images(self, images: List, n_samples: int = 5) -> List:
-        """
-        Generates similar images using the diffusion model.
-
-        Args:
-            images: list of images to augment
-            n_samples: number of new samples to generate per image
-
-        Returns:
-            augmented_images: list of augmented images
-        """
-        # This is a placeholder - you would implement the actual diffusion logic here
-        # For example, using diffusers library with Stable Diffusion
-        from diffusers import StableDiffusionImg2ImgPipeline
-        import torch
-
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            self.model_name, torch_dtype=torch.float16
-        ).to("cuda")
-
-        all_generated = []
-        all_original = []  # Store original images for logging
-
-        for image in images:
-            all_original.append(image)
-            # Generate variations with low strength to keep similarity
-            outputs = pipe(
-                image=image,
-                prompt="same image, high quality",
-                num_images_per_prompt=n_samples,
-                strength=0.3,  # Low strength preserves more of original
-            ).images
-            all_generated.extend(outputs)
-
-        # Log to wandb
-        self._log_to_wandb(all_original, all_generated, n_samples)
-
-        return all_generated
-
-    def _log_to_wandb(
-        self, original_images: List, generated_images: List, n_samples: int
-    ):
-        """
-        Logs original and generated images to wandb.
-
-        Args:
-            original_images: list of original images
-            generated_images: list of generated images
-            n_samples: number of samples generated per original image
-        """
-        if not wandb.run:
-            return  # Skip if wandb is not initialized
-
-        # Convert all images to PIL if they aren't already
-        to_pil = ToPILImage()
-
-        for i, orig_img in enumerate(original_images):
-            # Ensure it's a PIL image
-            if not isinstance(orig_img, Image.Image):
-                orig_img = to_pil(orig_img)
-
-            # Resize to smaller dimensions for wandb (optional, to save bandwidth)
-            orig_img = orig_img.resize((128, 128), Image.LANCZOS)
-
-            # Get corresponding generated images
-            gen_imgs = []
-            for j in range(n_samples):
-                idx = i * n_samples + j
-                if idx < len(generated_images):
-                    gen_img = generated_images[idx]
-                    if not isinstance(gen_img, Image.Image):
-                        gen_img = to_pil(gen_img)
-                    gen_img = gen_img.resize((128, 128), Image.LANCZOS)
-                    gen_imgs.append(gen_img)
-
-            # Create a wandb Image with caption
-            wandb_images = [wandb.Image(orig_img, caption="Original")]
-            for j, img in enumerate(gen_imgs):
-                wandb_images.append(wandb.Image(img, caption=f"Generated {j+1}"))
-
-            # Log to wandb
-            wandb.log(
-                {
-                    f"diffusion/sample_{i}": wandb_images,
-                }
-            )
-
-
-def extract_features(
-    model: BaseMethod, loader: DataLoader
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Extracts features from the model for all samples in the loader.
-
-    Args:
-        model: trained model
-        loader: data loader
-
-    Returns:
-        features: feature vectors (N, D)
-        labels: class labels (N,)
-    """
-    model.eval()
-    features_list = []
-    labels_list = []
-
-    with torch.no_grad():
-        for batch in loader:
-            img, labels = batch
-            img = make_contiguous(img)
-            features = model.backbone(img.to(model.device))
-            features = features.cpu().numpy()
-            features_list.append(features)
-            labels_list.append(labels.numpy())
-
-    features = np.concatenate(features_list)
-    labels = np.concatenate(labels_list)
-
-    return features, labels
-
-
-def save_to_huggingface(
-    dataset: Dataset,
-    original_dataset_name: str,
-    cycle_idx: int,
-    num_clusters: int,
-    num_ood_points: int,
-    repo_id: str = None,
-) -> str:
-    """
-    Saves a dataset to HuggingFace.
-
-    Args:
-        dataset: dataset to save
-        original_dataset_name: name of original dataset
-        cycle_idx: current cycle index
-        num_clusters: number of clusters used
-        num_ood_points: number of OOD points per cluster
-        repo_id: repository ID (will be created if None)
-
-    Returns:
-        repo_id: repository ID of saved dataset
-    """
-    # Convert PyTorch dataset to HuggingFace dataset
-    images = []
-    labels = []
-
-    for i in range(len(dataset)):
-        img, label = dataset[i]
-        images.append(img)
-        labels.append(label)
-
-    hf_dataset = HFDataset.from_dict({"image": images, "label": labels})
-
-    # Create repo ID if not provided
-    if repo_id is None:
-        # Example: "username/cifar10-bridge-c3-n10-e5"
-        dataset_name = original_dataset_name.split("/")[-1]
-        repo_id = f"{HfApi().whoami()['name']}/{dataset_name}-bridge-c{cycle_idx}-k{num_clusters}-n{num_ood_points}"
-
-    # Push to hub
-    hf_dataset.push_to_hub(repo_id)
-
-    return repo_id
-
-
-@hydra.main(config_path="config", config_name="pretrain")
+@hydra.main(version_base="1.2")
 def main(cfg: DictConfig):
-    # Initialize model and other components as in main_pretrain.py
-    # [Same initialization code as in main_pretrain.py]
+    print(OmegaConf.to_yaml(cfg))
+    exit()
+    # hydra doesn't allow us to add new keys for "safety"
+    # set_struct(..., False) disables this behavior and allows us to add more parameters
+    # without making the user specify every single thing about the model
+    OmegaConf.set_struct(cfg, False)
+    cfg = parse_cfg(cfg)
 
-    # Add specific bridge configurations
-    bridge_cfg = OmegaConf.create(
-        {
-            "num_epochs_per_cycle": 10,
-            "num_cycles": 5,
-            "num_clusters": 5,
-            "num_ood_points_per_cluster": 10,
-            "diffusion_model": "stabilityai/stable-diffusion-2-1",
-            "n_augmentations_per_sample": 5,
-        }
-    )
+    seed_everything(cfg.seed)
 
-    if "bridge" in cfg:
-        bridge_cfg = OmegaConf.merge(bridge_cfg, cfg.bridge)
+    assert cfg.method in METHODS, f"Choose from {METHODS.keys()}"
 
-    # Track the current dataset name
-    current_dataset_name = cfg.data.dataset_name
+    if cfg.data.num_large_crops != 2:
+        assert cfg.method in ["wmse", "mae"]
 
-    # Initialize components
-    ood_detector = OODDetector(
-        num_clusters=bridge_cfg.num_clusters,
-        num_ood_points_per_cluster=bridge_cfg.num_ood_points_per_cluster,
-    )
+    model = METHODS[cfg.method](cfg)
+    make_contiguous(model)
+    # can provide up to ~20% speed up
+    if not cfg.performance.disable_channel_last:
+        model = model.to(memory_format=torch.channels_last)
 
-    augmenter = DiffusionAugmenter(model_name=bridge_cfg.diffusion_model)
-
-    # Run the bridge cycles
-    for cycle_idx in range(bridge_cfg.num_cycles):
-        print(f"=== Starting Bridge Cycle {cycle_idx+1}/{bridge_cfg.num_cycles} ===")
-        print(f"Training with dataset: {current_dataset_name}")
-
-        # Determine if we're using a HuggingFace dataset
-        is_hf_dataset = (
-            current_dataset_name.startswith("hf://") or "/" in current_dataset_name
-        )
-
-        # Prepare datasets
-        if is_hf_dataset:
-            train_dataset, val_dataset = prepare_hf_datasets(
-                dataset_name=current_dataset_name.replace("hf://", ""),
-                train_transform=cfg.data.augmentations.train_transform,
-                val_transform=cfg.data.augmentations.val_transform,
-                streaming=cfg.data.get("streaming", False),
-                image_key=cfg.data.get("image_key", "image"),
-                label_key=cfg.data.get("label_key", "label"),
-            )
+    # validation dataloader for when it is available
+    if cfg.data.dataset == "custom" and (
+        cfg.data.no_labels or cfg.data.val_path is None
+    ):
+        val_loader = None
+    elif cfg.data.dataset in ["imagenet100", "imagenet"] and cfg.data.val_path is None:
+        val_loader = None
+    else:
+        if cfg.data.format == "dali":
+            val_data_format = "image_folder"
         else:
-            train_dataset, val_dataset = prepare_datasets(
-                dataset=cfg.data.dataset,
-                data_dir=cfg.data.data_dir,
-                train_dir=cfg.data.train_dir,
-                val_dir=cfg.data.val_dir,
-                train_transform=cfg.data.augmentations.train_transform,
-                val_transform=cfg.data.augmentations.val_transform,
-                no_labels=False,
-            )
+            val_data_format = cfg.data.format
 
-        # Prepare data loaders
-        train_loader, val_loader = prepare_dataloaders(
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
+        _, val_loader = prepare_data_classification(
+            cfg.data.dataset,
+            train_data_path=cfg.data.train_path,
+            val_data_path=cfg.data.val_path,
+            data_format=val_data_format,
             batch_size=cfg.optimizer.batch_size,
             num_workers=cfg.data.num_workers,
         )
 
-        # Create trainer and model (similar to main_pretrain.py)
-        # [Same model and trainer setup code as in main_pretrain.py]
+    # pretrain dataloader
+    if cfg.data.format == "dali":
+        assert (
+            _dali_avaliable
+        ), "Dali is not currently avaiable, please install it first with pip3 install .[dali]."
+        pipelines = []
+        for aug_cfg in cfg.augmentations:
+            pipelines.append(
+                NCropAugmentation(
+                    build_transform_pipeline_dali(
+                        cfg.data.dataset, aug_cfg, dali_device=cfg.dali.device
+                    ),
+                    aug_cfg.num_crops,
+                )
+            )
+        transform = FullTransformPipeline(pipelines)
 
-        # Train for N epochs
-        trainer.fit(model, train_loader, val_loader)
+        dali_datamodule = PretrainDALIDataModule(
+            dataset=cfg.data.dataset,
+            train_data_path=cfg.data.train_path,
+            transforms=transform,
+            num_large_crops=cfg.data.num_large_crops,
+            num_small_crops=cfg.data.num_small_crops,
+            num_workers=cfg.data.num_workers,
+            batch_size=cfg.optimizer.batch_size,
+            no_labels=cfg.data.no_labels,
+            data_fraction=cfg.data.fraction,
+            dali_device=cfg.dali.device,
+            encode_indexes_into_labels=cfg.dali.encode_indexes_into_labels,
+        )
+        dali_datamodule.val_dataloader = lambda: val_loader
+    else:
+        pipelines = []
+        for aug_cfg in cfg.augmentations:
+            pipelines.append(
+                NCropAugmentation(
+                    build_transform_pipeline(cfg.data.dataset, aug_cfg),
+                    aug_cfg.num_crops,
+                )
+            )
+        transform = FullTransformPipeline(pipelines)
 
-        # Skip OOD detection and augmentation for the last cycle
-        if cycle_idx == bridge_cfg.num_cycles - 1:
-            break
+        if cfg.debug_augmentations:
+            print("Transforms:")
+            print(transform)
 
-        # Extract features
-        print("Extracting features for OOD detection...")
-        features, labels = extract_features(model, train_loader)
-
-        # Detect OOD samples
-        print("Detecting OOD samples...")
-        ood_indices, ood_labels, cluster_assignments = ood_detector.fit_and_detect(
-            features, labels
+        train_dataset = prepare_datasets(
+            cfg.data.dataset,
+            transform,
+            train_data_path=cfg.data.train_path,
+            data_format=cfg.data.format,
+            no_labels=cfg.data.no_labels,
+            data_fraction=cfg.data.fraction,
+        )
+        train_loader = prepare_dataloader(
+            train_dataset,
+            batch_size=cfg.optimizer.batch_size,
+            num_workers=cfg.data.num_workers,
         )
 
-        # Get OOD images
-        ood_images = []
-        for idx in ood_indices:
-            img, _ = train_dataset[idx]
-            ood_images.append(img)
-
-        # Generate similar images
-        print("Generating new images with diffusion model...")
-        augmented_images = augmenter.generate_similar_images(
-            images=ood_images, n_samples=bridge_cfg.n_augmentations_per_sample
+    # 1.7 will deprecate resume_from_checkpoint, but for the moment
+    # the argument is the same, but we need to pass it as ckpt_path to trainer.fit
+    ckpt_path, wandb_run_id = None, None
+    if cfg.auto_resume.enabled and cfg.resume_from_checkpoint is None:
+        auto_resumer = AutoResumer(
+            checkpoint_dir=os.path.join(cfg.checkpoint.dir, cfg.method),
+            max_hours=cfg.auto_resume.max_hours,
         )
+        resume_from_checkpoint, wandb_run_id = auto_resumer.find_checkpoint(cfg)
+        if resume_from_checkpoint is not None:
+            print(
+                "Resuming from previous checkpoint that matches specifications:",
+                f"'{resume_from_checkpoint}'",
+            )
+            ckpt_path = resume_from_checkpoint
+    elif cfg.resume_from_checkpoint is not None:
+        ckpt_path = cfg.resume_from_checkpoint
+        del cfg.resume_from_checkpoint
 
-        # Create new augmented dataset
-        # (In practice, you might want to add these to the original dataset)
-        print("Creating and uploading augmented dataset...")
+    callbacks = []
 
-        # Save to HuggingFace
-        repo_id = save_to_huggingface(
-            dataset=train_dataset,  # You'd add the augmented samples here
-            original_dataset_name=current_dataset_name,
-            cycle_idx=cycle_idx,
-            num_clusters=bridge_cfg.num_clusters,
-            num_ood_points=bridge_cfg.num_ood_points_per_cluster,
+    if cfg.checkpoint.enabled:
+        ckpt = Checkpointer(
+            cfg,
+            logdir=os.path.join(cfg.checkpoint.dir, cfg.method),
+            frequency=cfg.checkpoint.frequency,
+            keep_prev=cfg.checkpoint.keep_prev,
         )
+        callbacks.append(ckpt)
 
-        # Update current dataset name for next cycle
-        current_dataset_name = repo_id
+    if omegaconf_select(cfg, "auto_umap.enabled", False):
+        assert (
+            _umap_available
+        ), "UMAP is not currently avaiable, please install it first with [umap]."
+        auto_umap = AutoUMAP(
+            cfg.name,
+            logdir=os.path.join(cfg.auto_umap.dir, cfg.method),
+            frequency=cfg.auto_umap.frequency,
+        )
+        callbacks.append(auto_umap)
 
-        print(f"Completed cycle {cycle_idx+1}. New dataset: {current_dataset_name}")
+    # wandb logging
+    if cfg.wandb.enabled:
+        wandb_logger = WandbLogger(
+            name=cfg.name,
+            project=cfg.wandb.project,
+            entity=cfg.wandb.entity,
+            offline=cfg.wandb.offline,
+            resume="allow" if wandb_run_id else None,
+            id=wandb_run_id,
+        )
+        wandb_logger.watch(model, log="gradients", log_freq=100)
+        wandb_logger.log_hyperparams(OmegaConf.to_container(cfg))
 
-    print("Bridge pretraining complete!")
+        # lr logging
+        lr_monitor = LearningRateMonitor(logging_interval="step")
+        callbacks.append(lr_monitor)
+
+    trainer_kwargs = OmegaConf.to_container(cfg)
+    # we only want to pass in valid Trainer args, the rest may be user specific
+    valid_kwargs = inspect.signature(Trainer.__init__).parameters
+    trainer_kwargs = {
+        name: trainer_kwargs[name] for name in valid_kwargs if name in trainer_kwargs
+    }
+    trainer_kwargs.update(
+        {
+            "logger": wandb_logger if cfg.wandb.enabled else None,
+            "callbacks": callbacks,
+            "enable_checkpointing": False,
+            "strategy": (
+                DDPStrategy(find_unused_parameters=False)
+                if cfg.strategy == "ddp"
+                else cfg.strategy
+            ),
+        }
+    )
+    trainer = Trainer(**trainer_kwargs)
+
+    if cfg.data.format == "dali":
+        trainer.fit(model, ckpt_path=ckpt_path, datamodule=dali_datamodule)
+    else:
+        trainer.fit(model, train_loader, val_loader, ckpt_path=ckpt_path)
 
 
 if __name__ == "__main__":

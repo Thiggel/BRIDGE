@@ -4,17 +4,20 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", type=str, required=True)
-parser.add_argument("--output_dir", type=str, required=True)
+parser.add_argument("--output-dir", type=str, required=True)
 args = parser.parse_args()
 
 # Load a dataset (e.g., cifar10, beans, food101, etc.)
 dataset = load_dataset(args.dataset)
 
+if os.path.exists(args.output_dir):
+    print(f"Output directory {args.output_dir} already exists. Exiting.")
+    exit(1)
+
 # Create directories for the dataset
-base_dir = args.output_dir
-os.makedirs(output_dir, exist_ok=True)
-train_h5_path = os.path.join(output_dir, "train.h5")
-val_h5_path = os.path.join(output_dir, "val.h5")
+os.makedirs(args.output_dir, exist_ok=True)
+train_h5_path = os.path.join(args.output_dir, "train.h5")
+val_h5_path = os.path.join(args.output_dir, "val.h5")
 
 # Convert the training set
 with h5py.File(train_h5_path, "w") as h5:
