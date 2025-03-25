@@ -115,9 +115,10 @@ class H5Dataset(Dataset):
             with open(h5_data_info_file) as f:
                 for line in f:
                     print(line.strip().split(" "))
-                    class_name_img, y = line.strip().split(" ")
-                    class_name, img_name = class_name_img.split("/")
-                    self._data.append((class_name, img_name, int(y)))
+                    # class_name_img, y = line.strip().split(" ")
+                    # class_name, img_name = class_name_img.split("/")
+                    # self._data.append((class_name, img_name, int(y)))
+                exit()
 
     def _find_classes(self, h5_file: h5py.File):
         classes = sorted(h5_file.keys())
