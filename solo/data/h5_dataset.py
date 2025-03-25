@@ -139,8 +139,6 @@ class H5Dataset(Dataset):
         if self.transform:
             x = self.transform(x)
 
-        print(x)
-
         return x, y
 
     def __len__(self):
