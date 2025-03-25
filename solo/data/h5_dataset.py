@@ -127,6 +127,7 @@ class H5Dataset(Dataset):
         return classes, class_to_idx
 
     def _load_img(self, class_name: str, img: str):
+        print(self.h5_file[class_name][img])
         img = self.h5_file[class_name][img][:]
         img = Image.open(io.BytesIO(img)).convert("RGB")
         return img
