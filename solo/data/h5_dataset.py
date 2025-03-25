@@ -94,6 +94,8 @@ class H5Dataset(Dataset):
             os.path.expanduser("~"),
             os.path.basename(os.path.splitext(self.h5_path)[0]) + ".txt",
         )
+        print(h5_data_info_file)
+        exit()
         if not os.path.isfile(h5_data_info_file):
             temp_h5_file = h5py.File(self.h5_path, "r")
 
