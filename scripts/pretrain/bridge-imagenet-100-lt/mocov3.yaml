@@ -24,7 +24,7 @@ momentum:
   base_tau: 0.99
   final_tau: 1.0
 data:
-  num_workers: 4
+  num_workers: 12
 optimizer:
   name: "lars"
   batch_size: 128
