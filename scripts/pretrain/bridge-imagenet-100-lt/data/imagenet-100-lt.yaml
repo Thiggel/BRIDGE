@@ -1,0 +1,4 @@
+dataset: custom
+train_path: "/var/scratch/ssalehid//BRIDGE/datasets/imagenet-100-lt/train.h5"
+format: "h5"
+no_labels: False

@@ -3,7 +3,7 @@ defaults:
   - base.yaml
   - augmentations: asymmetric.yaml
   - wandb: private.yaml
-  - datasets: imagenet-100-lt.yaml
+  - data: imagenet-100-lt.yaml
 
 # disable hydra outputs
 hydra:
