@@ -1,144 +1,162 @@
+#!/usr/bin/env python
 import os
 import argparse
 import h5py
 import io
 from PIL import Image
-import requests
 import numpy as np
-import torch
-from tqdm import tqdm
 from datasets import load_dataset
 from pathlib import Path
 import shutil
 
-parser = argparse.ArgumentParser(
-    description="Download dataset and convert to h5 format for solo-learn"
-)
-parser.add_argument(
-    "--dataset",
-    type=str,
-    required=True,
-    help="Name of the dataset (huggingface dataset or 'cifar10', 'cifar100', 'stl10', 'imagenet', 'imagenet100')",
-)
-parser.add_argument(
-    "--output-dir", type=str, required=True, help="Output directory for h5 files"
-)
-parser.add_argument(
-    "--split",
-    type=str,
-    default="train",
-    help="Dataset split (e.g., train, test, validation)",
-)
-parser.add_argument(
-    "--subset",
-    type=int,
-    default=-1,
-    help="Number of examples to use per class (for debugging). Default: -1 (all)",
-)
+parser = argparse.ArgumentParser()
+parser.add_argument("--dataset", type=str, required=True)
+parser.add_argument("--output-dir", type=str, required=True)
 args = parser.parse_args()
 
+# Load dataset
+dataset = load_dataset(args.dataset)
+print(f"Loaded dataset: {args.dataset}")
+
+if os.path.exists(args.output_dir):
+    print(f"Output directory {args.output_dir} already exists. Exiting.")
+    exit(1)
+
+# Create base directories
 os.makedirs(args.output_dir, exist_ok=True)
 
 
-def get_image_bytes(img):
-    """Convert PIL Image to bytes buffer"""
+# Function to convert PIL Image to bytes
+def image_to_bytes(img):
+    if not isinstance(img, Image.Image):
+        img = Image.fromarray(np.uint8(img))
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format="JPEG")
     return img_byte_arr.getvalue()
 
 
-def process_dataset():
-    """Download the dataset and convert it to h5 format"""
-    print(f"Loading dataset: {args.dataset}, split: {args.split}")
+# Process training data
+print("Processing training data...")
+if "train" in dataset:
+    train_h5_path = os.path.join(args.output_dir, "train.h5")
+    with h5py.File(train_h5_path, "w") as h5f:
+        # Check if dataset has labels
+        has_labels = "label" in dataset["train"].features
 
-    # Load the dataset
-    if args.dataset in ["cifar10", "cifar100", "stl10"]:
-        dataset = load_dataset(args.dataset, split=args.split)
-    elif args.dataset in ["imagenet", "imagenet100"]:
-        if args.dataset == "imagenet100":
-            # Use a subset of ImageNet classes
-            with open("solo/data/dataset_subset/imagenet100_classes.txt", "r") as f:
-                imagenet100_classes = f.readline().strip().split()
-            dataset = load_dataset("imagenet-1k", split=args.split)
-            # Filter to only include imagenet100 classes
-            dataset = dataset.filter(
-                lambda example: example["label"] in imagenet100_classes
-            )
-        else:
-            dataset = load_dataset("imagenet-1k", split=args.split)
-    else:
-        # Use HuggingFace datasets
-        dataset = load_dataset(args.dataset, split=args.split)
-
-    # Get class information
-    if "label" in dataset.features:
-        if hasattr(dataset.features["label"], "names"):
-            class_names = dataset.features["label"].names
-        else:
-            # Create numeric class names if names not available
-            unique_labels = set(dataset["label"])
-            class_names = [str(i) for i in range(len(unique_labels))]
-    else:
-        # If no labels, create a single dummy class
-        class_names = ["no_label"]
-
-    # Create h5 file
-    output_file = os.path.join(args.output_dir, f"{args.dataset}_{args.split}.h5")
-    print(f"Creating h5 file: {output_file}")
-
-    with h5py.File(output_file, "w") as h5f:
-        # Create group for each class
-        for class_name in class_names:
-            h5f.create_group(class_name)
-
-        # Process all examples
-        for idx, example in enumerate(tqdm(dataset, desc="Processing images")):
-            # Get image and label
-            if "image" in example:
-                image = example["image"]
-                if not isinstance(image, Image.Image):
-                    image = Image.fromarray(image)
-            elif "img" in example:
-                image = example["img"]
-                if not isinstance(image, Image.Image):
-                    image = Image.fromarray(image)
-            elif "pixel_values" in example:
-                # If the dataset provides pixel values directly
-                pixel_values = example["pixel_values"]
-                if isinstance(pixel_values, torch.Tensor):
-                    pixel_values = pixel_values.numpy()
-                # Convert from CHW to HWC if necessary
-                if pixel_values.shape[0] == 3:
-                    pixel_values = np.transpose(pixel_values, (1, 2, 0))
-                image = Image.fromarray((pixel_values * 255).astype(np.uint8))
+        if has_labels:
+            # Get class names if available
+            if hasattr(dataset["train"].features["label"], "names"):
+                class_names = dataset["train"].features["label"].names
             else:
-                raise ValueError(f"Cannot find image data in example: {example.keys()}")
+                # Create numeric class names if names not available
+                class_names = [
+                    str(i) for i in range(len(np.unique(dataset["train"]["label"])))
+                ]
 
-            # Get label
-            if "label" in example:
-                label = example["label"]
-                class_name = (
-                    class_names[label] if isinstance(label, int) else str(label)
-                )
+            # Create groups for each class
+            for class_name in class_names:
+                h5f.create_group(class_name)
+
+            # Save images to respective class groups
+            for i, (img, label) in enumerate(
+                zip(dataset["train"]["image"], dataset["train"]["label"])
+            ):
+                if i % 100 == 0:
+                    print(f"Processing training image {i}/{len(dataset['train'])}")
+
+                class_name = class_names[label]
+                img_name = f"{i}.jpg"
+
+                # Convert to bytes
+                img_bytes = image_to_bytes(img)
+
+                # Store in h5 file
+                h5f[class_name][img_name] = np.void(img_bytes)
+        else:
+            # No labels - single group
+            no_label_group = h5f.create_group("no_label")
+
+            # Save images to the single group
+            for i, img in enumerate(dataset["train"]["image"]):
+                if i % 100 == 0:
+                    print(f"Processing training image {i}/{len(dataset['train'])}")
+
+                img_name = f"{i}.jpg"
+
+                # Convert to bytes
+                img_bytes = image_to_bytes(img)
+
+                # Store in h5 file
+                no_label_group[img_name] = np.void(img_bytes)
+
+# Process validation data
+print("Processing validation data...")
+val_key = None
+if "validation" in dataset:
+    val_key = "validation"
+elif "val" in dataset:
+    val_key = "val"
+elif "test" in dataset:
+    val_key = "test"
+
+if val_key:
+    val_h5_path = os.path.join(args.output_dir, "val.h5")
+    with h5py.File(val_h5_path, "w") as h5f:
+        # Check if dataset has labels
+        has_labels = "label" in dataset[val_key].features
+
+        if has_labels:
+            # Get class names if available
+            if hasattr(dataset[val_key].features["label"], "names"):
+                class_names = dataset[val_key].features["label"].names
             else:
-                class_name = "no_label"
+                # Create numeric class names if names not available
+                class_names = [
+                    str(i) for i in range(len(np.unique(dataset[val_key]["label"])))
+                ]
 
-            # Convert image to bytes and store in h5 file
-            image_bytes = get_image_bytes(image)
-            image_name = f"img_{idx}.jpg"
-            h5f[class_name][image_name] = np.void(image_bytes)
+            # Create groups for each class
+            for class_name in class_names:
+                h5f.create_group(class_name)
 
-            # Limit examples per class if subset is specified
-            if args.subset > 0 and (idx + 1) >= args.subset * len(class_names):
-                break
+            # Save images to respective class groups
+            for i, (img, label) in enumerate(
+                zip(dataset[val_key]["image"], dataset[val_key]["label"])
+            ):
+                if i % 100 == 0:
+                    print(f"Processing validation image {i}/{len(dataset[val_key])}")
 
-    print(f"Dataset saved to {output_file}")
-    print(f"To use with solo-learn, configure your YAML with:")
-    print(f"data:")
-    print(f"  dataset: {args.dataset}")
-    print(f'  train_path: "{output_file}"')
-    print(f'  format: "h5"')
+                class_name = class_names[label]
+                img_name = f"{i}.jpg"
 
+                # Convert to bytes
+                img_bytes = image_to_bytes(img)
 
-if __name__ == "__main__":
-    process_dataset()
+                # Store in h5 file
+                h5f[class_name][img_name] = np.void(img_bytes)
+        else:
+            # No labels - single group
+            no_label_group = h5f.create_group("no_label")
+
+            # Save images to the single group
+            for i, img in enumerate(dataset[val_key]["image"]):
+                if i % 100 == 0:
+                    print(f"Processing validation image {i}/{len(dataset[val_key])}")
+
+                img_name = f"{i}.jpg"
+
+                # Convert to bytes
+                img_bytes = image_to_bytes(img)
+
+                # Store in h5 file
+                no_label_group[img_name] = np.void(img_bytes)
+
+print(f"Dataset converted and saved to {args.output_dir}")
+print(f"To use with solo-learn, configure your YAML with:")
+print(f"data:")
+print(f"  dataset: custom")
+print(f'  train_path: "{os.path.join(args.output_dir, "train.h5")}"')
+if val_key:
+    print(f'  val_path: "{os.path.join(args.output_dir, "val.h5")}"')
+print(f'  format: "h5"')
+print(f"  no_labels: {not has_labels}")
