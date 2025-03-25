@@ -126,7 +126,6 @@ class H5Dataset(Dataset):
 
     def _load_img(self, class_name: str, img_name: str):
         img_data = self.h5_file[class_name][img_name][()]
-        print(img_data)
         img = Image.open(io.BytesIO(img_data)).convert("RGB")
         return img
 
@@ -140,7 +139,7 @@ class H5Dataset(Dataset):
         if self.transform:
             x = self.transform(x)
 
-        print(x.shape)
+        print(x)
 
         return x, y
 
