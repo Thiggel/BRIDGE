@@ -124,18 +124,19 @@ class H5Dataset(Dataset):
         class_to_idx = {cls_name: i for i, cls_name in enumerate(classes)}
         return classes, class_to_idx
 
-    def _load_img(self, class_name: str, img: str):
-        img = self.h5_file[class_name][img]  # [:]
-        img = Image.open(io.BytesIO(img)).convert("RGB")
+    def _load_img(self, class_name: str, img_name: str):
+        img_data = self.h5_file[class_name][img_name]  # [:]
+        print(img_data)
+        img = Image.open(io.BytesIO(img_data)).convert("RGB")
         return img
 
     def __getitem__(self, index: int):
         if self.h5_file is None:
             self.h5_file = h5py.File(self.h5_path, "r")
 
-        class_name, img, y = self._data[index]
+        class_name, img_name, y = self._data[index]
 
-        x = self._load_img(class_name, img)
+        x = self._load_img(class_name, img_name)
         if self.transform:
             x = self.transform(x)
 
