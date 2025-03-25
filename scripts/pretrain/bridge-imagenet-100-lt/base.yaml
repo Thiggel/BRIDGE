@@ -22,3 +22,4 @@ precision: 32
 devices: auto
 accelerator: "gpu"
 strategy: "ddp"
+max_epochs: 300
