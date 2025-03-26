@@ -7,7 +7,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from fastai.vision.all import *
-from fastai.data.external import img2tensor
+from fastai.data.external import *
 from datasets import load_dataset, Dataset, concatenate_datasets
 
 
@@ -166,7 +166,7 @@ class HuggingFaceDataModule:
         def get_x(row):
             img = row["image"]
             if not isinstance(img, Tensor):
-                img = img2tensor(img)
+                img = image2tensor(img)
 
             return img
 
