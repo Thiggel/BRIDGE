@@ -1,17 +1,31 @@
 import os
 import time
+import json
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 import wandb
 from omegaconf import OmegaConf, DictConfig
 from fastai.vision.all import *
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.mixture import GaussianMixture
+import numpy as np
+from tqdm import tqdm
+from torch.utils.data import DataLoader
 
 from bridge.data.datamodule import HuggingFaceDataModule
 from bridge.detectors.ood_detector import OODDetector
+from bridge.evaluators.knn_evaluator import KNNEvaluator
 from bridge.augmentors.augmentor import DatasetAugmentor
 from bridge.models.ssl_models import get_ssl_model
+from bridge.utils.visualization import (
+    plot_embeddings,
+    plot_class_distribution,
+    plot_cluster_distribution,
+)
 
 
 class BRIDGETrainer:
@@ -99,6 +113,10 @@ class BRIDGETrainer:
                 min_delta=0.001,
             )
         )
+
+        # Add WandbCallback for logging to wandb
+        if self.cfg.use_wandb:
+            callbacks.append(WandbCallback())
 
         return callbacks
 
@@ -213,42 +231,212 @@ class BRIDGETrainer:
 
         return new_dataset_path
 
-    def augment_dataset(self, cycle_idx: int, ood_indices, ood_features, ood_labels):
-        """Augment dataset with generated samples or removed data"""
-        print(f"Augmenting dataset for cycle {cycle_idx + 1}")
+    def visualize_cycle_results(self, cycle_idx: int):
+        """Create and log visualizations at the end of a training cycle"""
+        print(f"Generating visualizations for cycle {cycle_idx}")
 
-        # Create dataset augmentor
-        augmentor = DatasetAugmentor(
-            num_generations_per_sample=self.cfg.bridge.num_generations_per_ood_sample,
-            diffusion_model=self.cfg.bridge.diffusion_model,
-            batch_size=self.cfg.optimizer.batch_size,
-            num_workers=self.cfg.data.num_workers,
-            experiment_name=self.name,
-            cycle_idx=cycle_idx,
-            original_dataset_path=self.cfg.data.train_path,
-            output_dir=self.output_dir,
+        # Setup output directory for visualizations
+        vis_dir = os.path.join(self.output_dir, "visualizations", f"cycle_{cycle_idx}")
+        os.makedirs(vis_dir, exist_ok=True)
+
+        # Get the current dataset
+        dataset = self.data_module.train_dataset
+
+        # Extract features, indices, and labels from the current dataset
+        features, indices, labels = self._extract_dataset_features(dataset)
+
+        # Obtain metadata for analysis
+        metadata = self._get_dataset_metadata(dataset)
+        is_generated = metadata.get("is_generated", [False] * len(dataset))
+        cycle_idxs = metadata.get("cycle_idx", [-1] * len(dataset))
+        is_ood = metadata.get("is_ood", [False] * len(dataset))
+
+        # Cluster the features
+        gmm = GaussianMixture(
+            n_components=self.cfg.bridge.num_clusters, random_state=42
+        )
+        features_norm = F.normalize(features, dim=1)
+        cluster_assignments = gmm.fit_predict(features_norm.numpy())
+
+        # 1. Create class distribution visualization
+        class_dist_file = os.path.join(
+            vis_dir, f"class_distribution_cycle_{cycle_idx}.png"
+        )
+        class_dist_fig = plot_class_distribution(
+            labels=labels.numpy(),
+            title=f"Class Distribution - Cycle {cycle_idx}",
+            filename=class_dist_file,
         )
 
-        # Augment dataset
-        if (
-            hasattr(self.cfg.bridge, "use_removed_data")
-            and self.cfg.bridge.use_removed_data
-        ):
-            # Ablation: use removed data instead of generating new samples
-            new_dataset_path = augmentor.add_removed_data(
-                self.cfg.data.removed_data_path
+        # 2. Create cluster distribution visualization
+        cluster_dist_file = os.path.join(
+            vis_dir, f"cluster_distribution_cycle_{cycle_idx}.png"
+        )
+        cluster_dist_fig = plot_cluster_distribution(
+            cluster_labels=cluster_assignments,
+            class_labels=labels.numpy(),
+            title=f"Cluster Distribution - Cycle {cycle_idx}",
+            filename=cluster_dist_file,
+        )
+
+        # 3. Create UMAP visualization of embeddings colored by class
+        # Highlight generated samples from the current cycle
+        current_gen_indices = np.where(np.array(cycle_idxs) == cycle_idx - 1)[0]
+        umap_class_file = os.path.join(vis_dir, f"umap_by_class_cycle_{cycle_idx}.png")
+        umap_class_fig = plot_embeddings(
+            embeddings=features.numpy(),
+            labels=labels.numpy(),
+            method="umap",
+            title=f"UMAP Embeddings by Class - Cycle {cycle_idx}",
+            filename=umap_class_file,
+            highlight_indices=(
+                current_gen_indices if len(current_gen_indices) > 0 else None
+            ),
+            highlight_label=(
+                "Recently Generated Samples" if len(current_gen_indices) > 0 else None
+            ),
+        )
+
+        # 4. Create UMAP visualization of embeddings colored by cluster
+        umap_cluster_file = os.path.join(
+            vis_dir, f"umap_by_cluster_cycle_{cycle_idx}.png"
+        )
+        umap_cluster_fig = plot_embeddings(
+            embeddings=features.numpy(),
+            labels=cluster_assignments,
+            method="umap",
+            title=f"UMAP Embeddings by Cluster - Cycle {cycle_idx}",
+            filename=umap_cluster_file,
+            highlight_indices=(
+                current_gen_indices if len(current_gen_indices) > 0 else None
+            ),
+            highlight_label=(
+                "Recently Generated Samples" if len(current_gen_indices) > 0 else None
+            ),
+        )
+
+        # 5. Create visualization showing OOD samples from previous cycle
+        if any(is_ood):
+            ood_indices = np.where(np.array(is_ood))[0]
+            umap_ood_file = os.path.join(
+                vis_dir, f"umap_ood_samples_cycle_{cycle_idx}.png"
             )
-        else:
-            # Normal case: generate new samples with diffusion model
-            new_dataset_path = augmentor.augment_dataset(
-                ood_indices, ood_features, ood_labels
+            umap_ood_fig = plot_embeddings(
+                embeddings=features.numpy(),
+                labels=labels.numpy(),
+                method="umap",
+                title=f"OOD Samples - Cycle {cycle_idx}",
+                filename=umap_ood_file,
+                highlight_indices=ood_indices,
+                highlight_label="OOD Samples",
             )
 
-        # Update data module with new dataset
-        self.cfg.data.train_path = new_dataset_path
-        self.data_module = self.create_data_module()
+        # Log to wandb if available
+        if self.cfg.use_wandb:
+            log_dict = {
+                f"class_distribution_cycle_{cycle_idx}": wandb.Image(class_dist_file),
+                f"cluster_distribution_cycle_{cycle_idx}": wandb.Image(
+                    cluster_dist_file
+                ),
+                f"umap_by_class_cycle_{cycle_idx}": wandb.Image(umap_class_file),
+                f"umap_by_cluster_cycle_{cycle_idx}": wandb.Image(umap_cluster_file),
+            }
 
-        return new_dataset_path
+            if any(is_ood):
+                log_dict[f"umap_ood_samples_cycle_{cycle_idx}"] = wandb.Image(
+                    umap_ood_file
+                )
+
+            # Add additional statistics
+            # Number of samples by type
+            num_original = sum(1 for idx in cycle_idxs if idx == -1)
+            num_generated = sum(1 for gen in is_generated if gen)
+
+            log_dict.update(
+                {
+                    f"num_original_samples_cycle_{cycle_idx}": num_original,
+                    f"num_generated_samples_cycle_{cycle_idx}": num_generated,
+                    f"total_samples_cycle_{cycle_idx}": len(dataset),
+                }
+            )
+
+            wandb.log(log_dict)
+
+        # Return features and cluster assignments for potential further use
+        return features, cluster_assignments
+
+    def _extract_dataset_features(self, dataset):
+        """Extract features from a dataset using the current model"""
+        loader = DataLoader(
+            dataset,
+            batch_size=self.cfg.optimizer.batch_size,
+            shuffle=False,
+            num_workers=self.cfg.data.num_workers,
+        )
+
+        features, indices, labels = [], [], []
+
+        self.model.eval()
+        with torch.no_grad():
+            for batch in tqdm(loader, desc="Extracting features"):
+                images, batch_labels = batch
+                batch_indices = torch.arange(len(indices), len(indices) + len(images))
+
+                if torch.cuda.is_available():
+                    images = images.cuda()
+
+                # Extract features
+                batch_features = self.model.get_features(images).cpu()
+
+                features.append(batch_features)
+                indices.append(batch_indices)
+                labels.append(batch_labels)
+
+        features = torch.cat(features, dim=0)
+        indices = torch.cat(indices, dim=0)
+        labels = torch.cat(labels, dim=0)
+
+        return features, indices, labels
+
+    def _get_dataset_metadata(self, dataset):
+        """Extract metadata from dataset (is_generated, cycle_idx, etc.)"""
+        metadata = {
+            "is_generated": [],
+            "cycle_idx": [],
+            "is_ood": [],
+            "cluster_idx": [],
+        }
+
+        # For HuggingFace datasets
+        if hasattr(dataset, "features") and hasattr(dataset, "__getitem__"):
+            # Check if metadata fields exist in dataset
+            has_metadata = all(
+                field in dataset.features
+                for field in ["is_generated", "cycle_idx", "is_ood"]
+            )
+
+            if has_metadata:
+                # Efficient extraction using dataset.select
+                metadata["is_generated"] = [
+                    dataset[i].get("is_generated", False) for i in range(len(dataset))
+                ]
+                metadata["cycle_idx"] = [
+                    dataset[i].get("cycle_idx", -1) for i in range(len(dataset))
+                ]
+                metadata["is_ood"] = [
+                    dataset[i].get("is_ood", False) for i in range(len(dataset))
+                ]
+                metadata["cluster_idx"] = [
+                    dataset[i].get("cluster_idx", -1) for i in range(len(dataset))
+                ]
+            else:
+                # Default values if metadata not present
+                metadata["is_generated"] = [False] * len(dataset)
+                metadata["cycle_idx"] = [-1] * len(dataset)
+                metadata["is_ood"] = [False] * len(dataset)
+                metadata["cluster_idx"] = [-1] * len(dataset)
+
+        return metadata
 
     def train(self):
         """Run the full BRIDGE training process"""
@@ -257,11 +445,18 @@ class BRIDGETrainer:
 
         # Train for each cycle
         for cycle_idx in range(self.cfg.bridge.num_cycles):
+            print(
+                f"\n============ Starting Cycle {cycle_idx + 1}/{self.cfg.bridge.num_cycles} ============\n"
+            )
+
             # Train for this cycle
             learner = self.train_cycle(
                 cycle_idx=cycle_idx,
                 num_epochs=num_epochs_per_cycle,
             )
+
+            # Visualize cycle results
+            self.visualize_cycle_results(cycle_idx)
 
             # Skip OOD detection and augmentation for the last cycle
             if cycle_idx < self.cfg.bridge.num_cycles - 1:
@@ -287,94 +482,229 @@ class BRIDGETrainer:
                 if self.cfg.use_wandb:
                     wandb.log({f"dataset_path_cycle_{cycle_idx + 1}": new_dataset_path})
 
+                # Visualize the dataset after augmentation
+                print("Visualizing dataset after augmentation...")
+                self.visualize_cycle_results(cycle_idx + 1)
+
         # Final evaluation
+        print("\n============ Final Evaluation ============\n")
         self.evaluate()
 
         # Close wandb
         if self.cfg.use_wandb:
             wandb.finish()
 
-    def evaluate(self):
-        """Evaluate the model on test set"""
-        # TODO: Implement evaluation on test set
-        pass
-
-    def finetune(
+    def _evaluate_representation(
         self,
         dataset_name: str,
-        num_epochs: int = 10,
-        lr: float = 1e-3,
-        batch_size: int = 64,
-        mixup: float = 0.0,
+        run_linear: bool = True,
+        run_knn: bool = True,
+        batch_size: int = 128,
+        linear_epochs: int = 10,
         freeze_backbone: bool = True,
         unfreeze_layers: int = 0,
-        pretrained_path: Optional[str] = None,
+        mixup: float = 0.0,
+        learning_rate: Optional[float] = None,
+        log_prefix: str = "",
+        save_results: bool = True,
     ):
-        """Finetune model on a downstream task
+        """Standardized method to evaluate representations on a dataset"""
+        results = {}
 
-        Args:
-            dataset_name: Name of dataset for finetuning ('cifar10', 'cifar100', 'caltech101', etc.)
-            num_epochs: Number of epochs for finetuning
-            lr: Learning rate for finetuning
-            batch_size: Batch size for finetuning
-            mixup: Mixup alpha parameter (0 to disable)
-            freeze_backbone: Whether to freeze the backbone
-            unfreeze_layers: Number of layers to unfreeze from the end (if freeze_backbone is True)
-            pretrained_path: Path to pretrained model (if None, use the current model)
+        try:
+            # Create dataloaders for this dataset
+            dls = self._create_finetune_dataloaders(dataset_name, batch_size)
 
-        Returns:
-            Trained learner object
-        """
-        print(f"Finetuning on {dataset_name} dataset")
+            # Extract backbone
+            backbone = (
+                self.model.backbone if hasattr(self.model, "backbone") else self.model
+            )
 
-        # Load pretrained model if specified
-        if pretrained_path:
-            print(f"Loading pretrained model from {pretrained_path}")
-            self.model.load_state_dict(torch.load(pretrained_path))
+            # 1. Linear Evaluation
+            if run_linear:
+                print(f"Running linear evaluation on {dataset_name}...")
+                linear_results = self._run_linear_model(
+                    dataset_name=dataset_name,
+                    dls=dls,
+                    backbone=backbone,
+                    num_epochs=linear_epochs,
+                    freeze_backbone=freeze_backbone,
+                    unfreeze_layers=unfreeze_layers,
+                    mixup=mixup,
+                    learning_rate=learning_rate,
+                    log_prefix=log_prefix,
+                )
+                results["linear"] = linear_results
 
-        # Create finetuning model by extracting backbone and adding classifier head
-        backbone = (
-            self.model.backbone if hasattr(self.model, "backbone") else self.model
-        )
+            # 2. kNN Classification
+            if run_knn:
+                print(f"Running kNN classification on {dataset_name}...")
+                knn_results = self._run_knn_classifier(
+                    dataset_name=dataset_name,
+                    dls=dls,
+                    backbone=backbone,
+                    log_prefix=log_prefix,
+                )
+                results["knn"] = knn_results
 
-        # Create data loaders for the specified dataset
-        dls = self._create_finetune_dataloaders(dataset_name, batch_size)
+            # Save results if requested
+            if save_results:
+                results_path = os.path.join(
+                    self.output_dir, f"{log_prefix}{dataset_name}_results.json"
+                )
+                with open(results_path, "w") as f:
+                    json.dump(
+                        {
+                            "linear": results.get("linear", {}),
+                            "knn": {
+                                str(k): v for k, v in results.get("knn", {}).items()
+                            },
+                        },
+                        f,
+                        indent=2,
+                    )
 
-        # Create a classifier model using the backbone
-        learn = self._create_finetune_learner(
-            backbone, dls, freeze_backbone, unfreeze_layers
-        )
+        except Exception as e:
+            print(f"Error evaluating on {dataset_name}: {e}")
+            results["error"] = str(e)
 
-        # Train with mixup if specified
+        return results
+
+    def _run_linear_model(
+        self,
+        dataset_name: str,
+        dls,
+        backbone,
+        num_epochs: int = 10,
+        freeze_backbone: bool = True,
+        unfreeze_layers: int = 0,
+        mixup: float = 0.0,
+        learning_rate: Optional[float] = None,
+        log_prefix: str = "",
+    ):
+        """Train and evaluate a linear model on top of the backbone"""
+        # Create a classifier model
+        learn = self._create_finetune_learner(backbone, dls, freeze_backbone)
+
+        # Unfreeze specified layers if requested
+        if freeze_backbone and unfreeze_layers > 0:
+            learn.unfreeze_to(-unfreeze_layers)
+
+        # Add mixup if specified
         if mixup > 0:
             learn.add_cb(MixUp(mixup))
 
+        # Add CSV logger
+        learn.add_cb(CSVLogger(fname=f"{log_prefix}{dataset_name}_metrics"))
+
+        # Add WandbCallback if using wandb
+        if self.cfg.use_wandb:
+            learn.add_cb(WandbCallback(log_preds=False, log_model=False))
+
+            # Custom callback for nicer metric names
+            class WandbMetricsCallback(Callback):
+                def after_epoch(callback_self):
+                    metrics = learn.recorder.metrics
+                    epoch = learn.epoch
+                    error_rate = metrics[0] if len(metrics) > 0 else None
+                    accuracy = metrics[1] if len(metrics) > 1 else None
+
+                    wandb.log(
+                        {
+                            f"{log_prefix}{dataset_name}_epoch": epoch,
+                            f"{log_prefix}{dataset_name}_error_rate": error_rate,
+                            f"{log_prefix}{dataset_name}_accuracy": accuracy,
+                        }
+                    )
+
+            learn.add_cb(WandbMetricsCallback())
+
         # Find learning rate if not provided
-        if lr is None:
-            lr = learn.lr_find().valley
-            print(f"Found optimal learning rate: {lr}")
+        if learning_rate is None:
+            learning_rate = learn.lr_find().valley
+            print(f"Found optimal learning rate: {learning_rate}")
 
-        # Fine-tune the model
-        learn.fine_tune(num_epochs, lr)
+        # Train the model - either fine_tune (with gradual unfreezing) or fit_one_cycle
+        if freeze_backbone:
+            print(f"Training linear classifier for {num_epochs} epochs...")
+            learn.fit_one_cycle(num_epochs, learning_rate)
+        else:
+            print(f"Fine-tuning model for {num_epochs} epochs...")
+            learn.fine_tune(num_epochs, learning_rate)
 
-        # Save the fine-tuned model
-        model_path = os.path.join(self.output_dir, f"finetune_{dataset_name}")
+        # Evaluate
+        error_rate, accuracy = learn.validate()
+        print(
+            f"Final metrics: Error Rate = {error_rate:.4f}, Accuracy = {accuracy:.4f}"
+        )
+
+        # Save the model
+        model_path = os.path.join(self.output_dir, f"{log_prefix}{dataset_name}_model")
         learn.save(model_path)
 
-        # Evaluate on test set
-        test_metrics = learn.validate()
-        print(f"Test metrics: {test_metrics}")
-
-        # Log metrics to wandb
+        # Log final results
         if self.cfg.use_wandb:
             wandb.log(
                 {
-                    f"finetune_{dataset_name}_error_rate": test_metrics[0],
-                    f"finetune_{dataset_name}_loss": test_metrics[1],
+                    f"{log_prefix}{dataset_name}_final_error_rate": error_rate,
+                    f"{log_prefix}{dataset_name}_final_accuracy": accuracy,
                 }
             )
 
-        return learn
+        return {"error_rate": error_rate.item(), "accuracy": accuracy.item()}
+
+    def _run_knn_classifier(
+        self, dataset_name: str, dls, backbone, log_prefix: str = ""
+    ):
+        """Run kNN classification on a dataset"""
+        # Create KNN evaluator
+        knn_evaluator = KNNEvaluator(
+            feature_extractor=backbone,
+            k_values=[1, 5, 10, 20, 50, 100],
+            batch_size=dls.bs,
+            num_workers=self.cfg.data.num_workers,
+        )
+
+        # Run evaluation
+        knn_results = knn_evaluator.evaluate(dls.train, dls.valid)
+
+        # Log results
+        if self.cfg.use_wandb:
+            # Log accuracy for each k
+            for k, result in knn_results.items():
+                wandb.log(
+                    {
+                        f"{log_prefix}{dataset_name}_knn_k{k}_accuracy": result[
+                            "accuracy"
+                        ]
+                    }
+                )
+
+            # Create confusion matrix plot for k=20
+            if 20 in knn_results:
+                cm = knn_results[20]["confusion_matrix"]
+                cm_fig = plt.figure(figsize=(10, 10))
+                sns.heatmap(cm, annot=False, fmt="d")
+                plt.title(f"KNN (k=20) - {dataset_name}")
+                plt.ylabel("True label")
+                plt.xlabel("Predicted label")
+
+                # Save and log
+                cm_path = os.path.join(
+                    self.output_dir, f"{log_prefix}{dataset_name}_knn_cm.png"
+                )
+                plt.savefig(cm_path)
+                plt.close()
+
+                wandb.log(
+                    {
+                        f"{log_prefix}{dataset_name}_knn_confusion_matrix": wandb.Image(
+                            cm_path
+                        )
+                    }
+                )
+
+        return knn_results
 
     def _create_finetune_dataloaders(self, dataset_name: str, batch_size: int = 64):
         """Create DataLoaders for finetuning on standard datasets"""
@@ -492,7 +822,7 @@ class BRIDGETrainer:
         )
 
         # Replace the model with our backbone
-        learn.model.features = backbone
+        learn.model.backbone = backbone
 
         # Freeze the backbone if needed
         if freeze_backbone:
@@ -504,27 +834,224 @@ class BRIDGETrainer:
 
         return learn
 
-    def fine_tune_all(self, datasets: List[str], **kwargs):
-        """Fine-tune on multiple datasets"""
-        results = {}
+    def evaluate(self):
+        """Comprehensive evaluation of the model on standard benchmarks"""
+        print("\n========== STARTING COMPREHENSIVE EVALUATION ==========\n")
 
-        for dataset in datasets:
-            print(f"Fine-tuning on {dataset}")
-            learn = self.finetune(dataset, **kwargs)
+        # Define standard benchmark datasets
+        standard_benchmarks = [
+            "cifar10",
+            "cifar100",
+            "caltech101",
+            "pets",
+            "flowers",
+            "food",
+            "cars",
+        ]
 
-            # Store results
-            metrics = learn.validate()
-            results[dataset] = {
-                "error_rate": metrics[0].item(),
-                "accuracy": metrics[1].item(),
-            }
+        # Results containers
+        all_results = {}
 
-        # Log summary table to wandb
+        # Setup summary tables for wandb
         if self.cfg.use_wandb:
-            table = wandb.Table(columns=["Dataset", "Error Rate", "Accuracy"])
-            for dataset, metrics in results.items():
-                table.add_data(dataset, metrics["error_rate"], metrics["accuracy"])
+            linear_table = wandb.Table(columns=["Dataset", "Error Rate", "Accuracy"])
+            knn_table = wandb.Table(
+                columns=["Dataset"] + [f"k={k}" for k in [1, 5, 20, 100]]
+            )
 
-            wandb.log({"finetune_results": table})
+        # Run evaluations for each benchmark
+        for dataset_name in standard_benchmarks:
+            print(f"\n----- Evaluating on {dataset_name} dataset -----\n")
+
+            # Run standardized evaluation (linear with frozen backbone + kNN)
+            results = self._evaluate_representation(
+                dataset_name=dataset_name,
+                run_linear=True,
+                run_knn=True,
+                batch_size=128,
+                linear_epochs=10,
+                freeze_backbone=True,  # Always freeze for evaluation
+                unfreeze_layers=0,
+                mixup=0.0,  # No mixup for evaluation
+                learning_rate=None,  # Auto-find LR
+                log_prefix="eval_",
+                save_results=True,
+            )
+
+            all_results[dataset_name] = results
+
+            # Add to wandb tables if no error occurred
+            if self.cfg.use_wandb and "error" not in results:
+                # Linear results
+                if "linear" in results:
+                    linear_table.add_data(
+                        dataset_name,
+                        results["linear"]["error_rate"],
+                        results["linear"]["accuracy"],
+                    )
+
+                # kNN results
+                if "knn" in results:
+                    knn_accs = [
+                        results["knn"].get(k, {}).get("accuracy", 0)
+                        for k in [1, 5, 20, 100]
+                    ]
+                    knn_table.add_data(dataset_name, *knn_accs)
+
+        # Print summary of results
+        print("\n========== EVALUATION SUMMARY ==========\n")
+        print("Linear Evaluation Results (frozen backbone):")
+        for dataset, result in all_results.items():
+            if "linear" in result:
+                print(
+                    f"  {dataset}: Error Rate = {result['linear']['error_rate']:.4f}, "
+                    f"Accuracy = {result['linear']['accuracy']:.4f}"
+                )
+
+        print("\nkNN Classification Results (k=20):")
+        for dataset, result in all_results.items():
+            if "knn" in result and 20 in result["knn"]:
+                print(f"  {dataset}: Accuracy = {result['knn'][20]['accuracy']:.4f}")
+
+        # Log summary tables to wandb
+        if self.cfg.use_wandb:
+            wandb.log(
+                {
+                    "linear_evaluation_summary": linear_table,
+                    "knn_evaluation_summary": knn_table,
+                    "evaluation_completed": True,
+                }
+            )
+
+        # Save comprehensive results to disk
+        results_path = os.path.join(self.output_dir, "evaluation_results.json")
+        with open(results_path, "w") as f:
+            json.dump(
+                {
+                    dataset: {
+                        "linear": results.get("linear", {}),
+                        "knn": (
+                            {
+                                str(k): v
+                                for k, v in results.get("knn", {}).items()
+                                if k in [1, 5, 10, 20, 50, 100]
+                            }
+                            if "knn" in results
+                            else {}
+                        ),
+                    }
+                    for dataset, results in all_results.items()
+                },
+                f,
+                indent=2,
+            )
+
+        print(f"\nEvaluation results saved to {results_path}")
+        return all_results
+
+    def finetune(
+        self,
+        dataset_name: str,
+        num_epochs: int = 10,
+        lr: float = 1e-3,
+        batch_size: int = 64,
+        mixup: float = 0.0,
+        freeze_backbone: bool = True,
+        unfreeze_layers: int = 0,
+        pretrained_path: Optional[str] = None,
+    ):
+        """Fine-tune model on a downstream task
+
+        Unlike pure evaluation, this allows adaptation to downstream tasks
+        with optional backbone unfreezing and mixup augmentation.
+        """
+        print(f"\n----- Fine-tuning on {dataset_name} dataset -----\n")
+
+        # Load pretrained model if specified
+        if pretrained_path:
+            print(f"Loading pretrained model from {pretrained_path}")
+            self.model.load_state_dict(torch.load(pretrained_path))
+
+        # Use the standardized evaluation method, but with finetuning options
+        results = self._evaluate_representation(
+            dataset_name=dataset_name,
+            run_linear=True,
+            run_knn=True,  # Also do kNN to compare
+            batch_size=batch_size,
+            linear_epochs=num_epochs,
+            freeze_backbone=freeze_backbone,
+            unfreeze_layers=unfreeze_layers,
+            mixup=mixup,
+            learning_rate=lr,
+            log_prefix="finetune_",
+            save_results=True,
+        )
 
         return results
+
+    def fine_tune_all(
+        self,
+        datasets: List[str],
+        num_epochs: int = 10,
+        lr: float = 1e-3,
+        batch_size: int = 64,
+        mixup: float = 0.0,
+        freeze_backbone: bool = True,
+        unfreeze_layers: int = 0,
+        pretrained_path: Optional[str] = None,
+    ):
+        """Fine-tune on multiple datasets sequentially"""
+        print("\n========== STARTING MULTI-DATASET FINE-TUNING ==========\n")
+
+        # Results container
+        all_results = {}
+
+        # Finetune on each dataset
+        for dataset_name in datasets:
+            results = self.finetune(
+                dataset_name=dataset_name,
+                num_epochs=num_epochs,
+                lr=lr,
+                batch_size=batch_size,
+                mixup=mixup,
+                freeze_backbone=freeze_backbone,
+                unfreeze_layers=unfreeze_layers,
+                pretrained_path=(
+                    pretrained_path if dataset_name == datasets[0] else None
+                ),
+            )
+
+            all_results[dataset_name] = results
+
+        # Create summary table for wandb
+        if self.cfg.use_wandb:
+            summary_table = wandb.Table(
+                columns=["Dataset", "Mode", "Method", "Accuracy"]
+            )
+
+            for dataset, result in all_results.items():
+                if "linear" in result:
+                    summary_table.add_data(
+                        dataset, "Finetune", "Linear", result["linear"]["accuracy"]
+                    )
+
+                if "knn" in result and 20 in result["knn"]:
+                    summary_table.add_data(
+                        dataset, "Finetune", "kNN (k=20)", result["knn"][20]["accuracy"]
+                    )
+
+            wandb.log({"finetune_summary": summary_table})
+
+        # Print summary
+        print("\n========== FINE-TUNING SUMMARY ==========\n")
+        for dataset, result in all_results.items():
+            if "linear" in result:
+                print(
+                    f"  {dataset} Linear: Accuracy = {result['linear']['accuracy']:.4f}"
+                )
+            if "knn" in result and 20 in result["knn"]:
+                print(
+                    f"  {dataset} kNN (k=20): Accuracy = {result['knn'][20]['accuracy']:.4f}"
+                )
+
+        return all_results
