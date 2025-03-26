@@ -7,7 +7,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from fastai.vision.all import *
-from fastai.data.external import *
+from fastai.data.external import img2tensor
 from datasets import load_dataset, Dataset, concatenate_datasets
 
 
