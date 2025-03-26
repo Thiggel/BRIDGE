@@ -155,6 +155,17 @@ class HuggingFaceDataModule:
         to_tensor = ToTensor()
 
         def get_x(row):
+            if isinstance(img, np.ndarray):
+                img = img.astype(np.uint8)
+
+            print(
+                type(sample["image"]),
+                (
+                    sample["image"].dtype
+                    if isinstance(sample["image"], np.ndarray)
+                    else "Not NumPy"
+                ),
+            )
             return row["image"]
 
         def get_y(row):
