@@ -164,9 +164,6 @@ class HuggingFaceDataModule:
         def get_x(row):
             img_array = Image.fromarray(np.array(row["image"]))
 
-            print(img_array.shape)
-            exit()
-
             return img_array
 
         def get_y(row):
