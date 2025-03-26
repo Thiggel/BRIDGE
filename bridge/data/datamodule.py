@@ -131,8 +131,6 @@ class HuggingFaceDataModule:
             )
             transform_list.insert(norm_idx, transforms.ToTensor())
 
-        transform_list.append(ToTensor())
-
         return transforms.Compose(transform_list)
 
     def _create_eval_transforms(self):
@@ -173,7 +171,7 @@ class HuggingFaceDataModule:
             get_x=get_x,
             get_y=get_y,
             splitter=RandomSplitter(valid_pct=self.val_pct),
-            item_tfms=[ToTensor()],
+            item_tfms=None,
             batch_tfms=self.train_transform if is_train else self.eval_transform,
         )
 
