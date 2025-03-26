@@ -263,8 +263,6 @@ def main(cfg: DictConfig):
     #   3.4. change dataset path in cfg to the new dataset
     # 4. repeat from (1) until num_cycles is reached
     for cycle_idx in range(cfg.bridge.num_cycles):
-        print(cfg.augmentations[0].rrc.crop_size)
-        exit()
         print(f"Cycle {cycle_idx + 1}/{cfg.bridge.num_cycles}")
         trainer = Trainer(**trainer_kwargs)
 
