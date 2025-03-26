@@ -49,9 +49,6 @@ class OODDetector:
         features, indices, targets = [], [], []
 
         self.feature_extractor.eval()
-        old_transform = dataset.transform
-        print(old_transform)
-        exit()
         for batch in tqdm(dataloader, desc="Extracting features"):
             print(batch)
             exit()
@@ -66,8 +63,6 @@ class OODDetector:
             features.append(feat)
             indices.append(batch_indices)
             targets.append(labels)
-
-        dataset.transform = old_transform
 
         features = torch.cat(features, dim=0)
         indices = torch.cat(indices, dim=0)
