@@ -159,15 +159,16 @@ class HuggingFaceDataModule:
 
     def _create_dataloaders(self, dataset, is_train=True):
         """Convert HuggingFace dataset to FastAI DataLoaders"""
+        to_tensor = ToTensor()
 
         # Define item getter function
         def get_x(row):
-            img_array = Image.fromarray(np.array(row["image"]))
+            img_array = ToTensor(Image.fromarray(np.array(row["image"])))
 
             return img_array
 
         def get_y(row):
-            return row["label"]
+            return torch.tensor(row["label"])
 
         # Create FastAI DataBlock
         dblock = DataBlock(
