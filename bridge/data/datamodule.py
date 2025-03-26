@@ -165,7 +165,7 @@ class HuggingFaceDataModule:
         def get_x(row):
             img = row["image"]
             if not isinstance(img, Tensor):
-                img = torch.tensor(img)
+                img = PILImage(img).to_tensor()
 
             return img
 
