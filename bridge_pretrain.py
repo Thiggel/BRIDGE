@@ -280,7 +280,7 @@ def main(cfg: DictConfig):
             cycle_idx,
         )
         ood_datapoints, ood_embeddings, ood_classes = ood_detector.get_ood_datapoints(
-            train_loader
+            train_dataset
         )
 
         dataset_augmentor = DatasetAugmentor(
