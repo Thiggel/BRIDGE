@@ -2,7 +2,7 @@ bridge:
   use_ood_augmentation: True
   num_cycles: 5
   num_clusters: 5
-  num_ood_points_per_cluster: 10
+  num_ood_samples_per_cluster: 10
   diffusion_model: "stabilityai/stable-diffusion-2-1"
   n_augmentations_per_sample: 5
 
