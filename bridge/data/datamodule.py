@@ -161,7 +161,7 @@ class HuggingFaceDataModule:
 
         # Define item getter function
         def get_x(row):
-            return PILImage(row["image"])
+            return np.array(row["image"])
 
         def get_y(row):
             return row["label"]
