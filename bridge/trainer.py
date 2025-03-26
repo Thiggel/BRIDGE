@@ -145,12 +145,13 @@ class BRIDGETrainer:
 
         # Get OOD samples
         if self.cfg.bridge.use_ood_augmentation:
-            # Get actual OOD samples
-            ood_indices, ood_features, ood_labels = ood_detector.get_ood_datapoints(
-                self.data_module.train_dataset
+            # Get actual OOD samples along with cluster assignments and dataset
+            ood_indices, ood_features, ood_labels, cluster_assignments, dataset = (
+                ood_detector.get_ood_datapoints(self.data_module.train_dataset)
             )
         else:
             # For ablation: get random samples instead
+            # Note: cluster_assignments will be None in this case
             total_samples = (
                 self.cfg.bridge.num_clusters
                 * self.cfg.bridge.num_ood_samples_per_cluster
@@ -158,8 +159,59 @@ class BRIDGETrainer:
             ood_indices, ood_features, ood_labels = ood_detector.get_random_samples(
                 self.data_module.train_dataset, total_samples
             )
+            cluster_assignments = None
+            dataset = self.data_module.train_dataset
 
-        return ood_indices, ood_features, ood_labels
+        return ood_indices, ood_features, ood_labels, cluster_assignments, dataset
+
+    def augment_dataset(
+        self,
+        cycle_idx: int,
+        ood_indices,
+        ood_features,
+        ood_labels,
+        cluster_assignments=None,
+        original_dataset=None,
+    ):
+        """Augment dataset with generated samples or removed data"""
+        print(f"Augmenting dataset for cycle {cycle_idx + 1}")
+
+        # Create dataset augmentor
+        augmentor = DatasetAugmentor(
+            num_generations_per_sample=self.cfg.bridge.num_generations_per_ood_sample,
+            diffusion_model=self.cfg.bridge.diffusion_model,
+            batch_size=self.cfg.optimizer.batch_size,
+            num_workers=self.cfg.data.num_workers,
+            experiment_name=self.name,
+            cycle_idx=cycle_idx,
+            original_dataset_path=self.cfg.data.train_path,
+            output_dir=self.output_dir,
+        )
+
+        # Augment dataset
+        if (
+            hasattr(self.cfg.bridge, "use_removed_data")
+            and self.cfg.bridge.use_removed_data
+        ):
+            # Ablation: use removed data instead of generating new samples
+            new_dataset_path = augmentor.add_removed_data(
+                self.cfg.data.removed_data_path
+            )
+        else:
+            # Normal case: generate new samples with diffusion model
+            new_dataset_path = augmentor.augment_dataset(
+                ood_indices,
+                ood_features,
+                ood_labels,
+                cluster_assignments=cluster_assignments,
+                original_dataset=original_dataset,
+            )
+
+        # Update data module with new dataset
+        self.cfg.data.train_path = new_dataset_path
+        self.data_module = self.create_data_module()
+
+        return new_dataset_path
 
     def augment_dataset(self, cycle_idx: int, ood_indices, ood_features, ood_labels):
         """Augment dataset with generated samples or removed data"""
@@ -213,14 +265,19 @@ class BRIDGETrainer:
 
             # Skip OOD detection and augmentation for the last cycle
             if cycle_idx < self.cfg.bridge.num_cycles - 1:
-                # Run OOD detection
-                ood_indices, ood_features, ood_labels = self.run_ood_detection(
-                    cycle_idx
+                # Run OOD detection and get cluster assignments
+                ood_indices, ood_features, ood_labels, cluster_assignments, dataset = (
+                    self.run_ood_detection(cycle_idx)
                 )
 
-                # Augment dataset
+                # Augment dataset with cluster information
                 new_dataset_path = self.augment_dataset(
-                    cycle_idx, ood_indices, ood_features, ood_labels
+                    cycle_idx,
+                    ood_indices,
+                    ood_features,
+                    ood_labels,
+                    cluster_assignments=cluster_assignments,
+                    original_dataset=dataset,
                 )
 
                 # Log updated dataset path

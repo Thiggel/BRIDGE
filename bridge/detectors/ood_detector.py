@@ -1,4 +1,5 @@
 import os
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -101,7 +102,9 @@ class OODDetector:
 
         # Find OOD samples for each cluster
         ood_indices = []
-        for cluster_idx in range(self.num_clusters):
+        ood_cluster_indices = []  # Track which cluster each OOD sample belongs to
+
+        for cluster_idx in tqdm(range(self.num_clusters), desc="Finding OOD samples"):
             # Get samples belonging to this cluster
             cluster_mask = cluster_assignments == cluster_idx
             cluster_indices = np.where(cluster_mask)[0]
@@ -115,12 +118,19 @@ class OODDetector:
                 sorted_idx = np.argsort(cluster_probs)[
                     : self.num_ood_samples_per_cluster
                 ]
-                ood_indices.extend(cluster_indices[sorted_idx])
+                selected_indices = cluster_indices[sorted_idx]
+                ood_indices.extend(selected_indices)
+                ood_cluster_indices.extend([cluster_idx] * len(selected_indices))
             else:
                 # If cluster is smaller than requested samples, take all
                 ood_indices.extend(cluster_indices)
+                ood_cluster_indices.extend([cluster_idx] * len(cluster_indices))
 
-        return np.array(ood_indices), cluster_assignments
+        # Convert to arrays for easier indexing
+        ood_indices = np.array(ood_indices)
+        ood_cluster_indices = np.array(ood_cluster_indices)
+
+        return ood_indices, cluster_assignments, ood_cluster_indices
 
     def _plot_umap(self, features, targets, ood_indices, cluster_assignments):
         """Create UMAP visualization of latent space"""
@@ -205,20 +215,37 @@ class OODDetector:
         return umap_features
 
     def get_ood_datapoints(self, dataset):
-        """Get OOD samples from dataset"""
+        """Get OOD samples from dataset
+
+        Returns:
+            A tuple containing:
+            - ood_indices: Indices of OOD samples
+            - ood_features: Features of OOD samples
+            - ood_labels: Labels of OOD samples
+            - all_cluster_assignments: Cluster assignments for all samples
+            - dataset: The loaded dataset (to avoid reloading)
+        """
         # Extract features
         features, indices, labels = self._extract_features(dataset)
 
         # Fit GMM
         gmm = self._fit_gmm(features)
 
-        # Get OOD indices and cluster assignments
-        ood_indices, cluster_assignments = self._get_ood_indices(gmm, features)
+        # Get OOD indices, overall cluster assignments, and cluster indices for OOD samples
+        ood_indices, all_cluster_assignments, ood_cluster_indices = (
+            self._get_ood_indices(gmm, features)
+        )
 
         # Plot UMAP
         umap_features = self._plot_umap(
-            features, labels, ood_indices, cluster_assignments
+            features, labels, ood_indices, all_cluster_assignments
         )
+
+        # Log cluster distribution
+        cluster_counts = np.bincount(
+            all_cluster_assignments, minlength=self.num_clusters
+        )
+        print(f"Cluster distribution: {cluster_counts}")
 
         # Log to wandb if available
         if wandb.run is not None:
@@ -226,11 +253,33 @@ class OODDetector:
                 {
                     f"ood_umap_cycle_{self.cycle_idx}": wandb.Image(self.umap_filename),
                     f"num_ood_points_cycle_{self.cycle_idx}": len(ood_indices),
+                    f"cluster_distribution_cycle_{self.cycle_idx}": {
+                        f"cluster_{i}": count for i, count in enumerate(cluster_counts)
+                    },
                 }
             )
 
-        # Return OOD samples
-        return indices[ood_indices], features[ood_indices], labels[ood_indices]
+            # Log OOD samples per cluster
+            ood_cluster_counts = np.bincount(
+                ood_cluster_indices, minlength=self.num_clusters
+            )
+            wandb.log(
+                {
+                    f"ood_samples_per_cluster_cycle_{self.cycle_idx}": {
+                        f"cluster_{i}": count
+                        for i, count in enumerate(ood_cluster_counts)
+                    }
+                }
+            )
+
+        # Return OOD samples, all cluster assignments, and the dataset
+        return (
+            indices[ood_indices],
+            features[ood_indices],
+            labels[ood_indices],
+            all_cluster_assignments,
+            dataset,
+        )
 
     def get_random_samples(self, dataset, num_samples):
         """Get random samples for ablation study"""
