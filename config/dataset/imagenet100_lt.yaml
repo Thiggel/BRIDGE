@@ -1,12 +1,10 @@
 name: imagenet100_lt
 
-train_path: "flaitenberger/imagenet-100-LT"
-val_path: "flaitenberger/imagenet-100-LT"
-test_path: "flaitenberger/imagenet-100-LT"
+path: "flaitenberger/imagenet-100-LT"
 removed_data_path: "flaitenberger/imagenet-100-LT-removed-data"
 split:
   train: "train"
-  val: "validation"
-  test: "test"
+  val: null
+  test: null
 num_classes: 100
 

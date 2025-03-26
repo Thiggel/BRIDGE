@@ -62,9 +62,7 @@ class BRIDGETrainer:
     def create_data_module(self):
         """Create data module for training"""
         data_module = HuggingFaceDataModule(
-            train_path=self.cfg.dataset.train_path,
-            val_path=self.cfg.dataset.val_path,
-            test_path=self.cfg.dataset.test_path,
+            path=self.cfg.dataset.train_path,
             train_split=self.cfg.dataset.split.train,
             val_split=self.cfg.dataset.split.val,
             test_split=self.cfg.dataset.split.test,
