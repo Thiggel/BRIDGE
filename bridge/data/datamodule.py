@@ -162,7 +162,7 @@ class HuggingFaceDataModule:
 
         # Define item getter function
         def get_x(row):
-            img_array = Image.from_array(np.array(row["image"]))
+            img_array = Image.fromarray(np.array(row["image"]))
 
             print(img_array.shape)
             exit()
