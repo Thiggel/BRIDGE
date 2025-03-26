@@ -66,13 +66,10 @@ class HuggingFaceDataModule:
                 ]
             )
 
-        # Build transforms based on configuration
         transform_list = []
 
         for aug in augmentation_config:
-            # Handle each augmentation type
             if "rrc" in aug:
-                # Random Resized Crop
                 config = aug["rrc"]
                 transform_list.append(
                     transforms.RandomResizedCrop(
@@ -84,7 +81,6 @@ class HuggingFaceDataModule:
                     )
                 )
             elif "color_jitter" in aug:
-                # Color Jitter
                 config = aug["color_jitter"]
                 transform_list.append(
                     transforms.ColorJitter(
@@ -95,13 +91,11 @@ class HuggingFaceDataModule:
                     )
                 )
             elif "random_gray_scale" in aug:
-                # Random Grayscale
                 config = aug["random_gray_scale"]
                 transform_list.append(
                     transforms.RandomGrayscale(p=config.get("prob", 0.2))
                 )
             elif "random_horizontal_flip" in aug:
-                # Random Horizontal Flip
                 config = aug["random_horizontal_flip"]
                 transform_list.append(
                     transforms.RandomHorizontalFlip(p=config.get("prob", 0.5))
@@ -144,7 +138,6 @@ class HuggingFaceDataModule:
 
     def setup(self):
         """Setup datasets, handling missing splits by creating them"""
-        # Load training dataset
         print(f"Loading training dataset from {self.path}")
         try:
             self.train_dataset = load_dataset(
@@ -161,17 +154,14 @@ class HuggingFaceDataModule:
         """Convert HuggingFace dataset to FastAI DataLoaders"""
         to_tensor = ToTensor()
 
-        # Define item getter function
         def get_x(row):
-            img_array = ToTensor(Image.fromarray(np.array(row["image"])))
-
-            return img_array
+            return row["image"]
 
         def get_y(row):
-            return torch.tensor(row["label"])
+            return row["label"]
 
-        # Create FastAI DataBlock
         dblock = DataBlock(
+            blocks=(ImageBlock, CategoryBlock),
             get_x=get_x,
             get_y=get_y,
             splitter=RandomSplitter(valid_pct=self.val_pct),
@@ -179,7 +169,6 @@ class HuggingFaceDataModule:
             batch_tfms=self.train_transform if is_train else self.eval_transform,
         )
 
-        # Create DataLoaders
         return dblock.dataloaders(
             dataset,
             bs=self.batch_size,
