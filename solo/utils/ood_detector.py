@@ -2,6 +2,7 @@ import os
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+from torchvision import transforms
 from tqdm import tqdm
 from sklearn.mixture import GaussianMixture
 from umap import UMAP
@@ -49,7 +50,8 @@ class OODDetector:
 
         self.feature_extractor.eval()
         old_transform = dataset.transform
-        dataset.transform = None
+        print(old_transform)
+        exit()
         for batch in tqdm(dataloader, desc="Extracting features"):
             print(batch)
             exit()
