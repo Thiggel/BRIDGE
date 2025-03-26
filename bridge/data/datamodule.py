@@ -42,20 +42,97 @@ class HuggingFaceDataModule:
 
         self.train_dataset = None
 
-        # Setup transforms
-        self.train_tfms = self._get_train_transforms()
-        self.eval_tfms = self._get_eval_transforms()
+        self.train_transform = self._create_ssl_transforms(self.augmentations)
+        self.eval_transform = self._create_eval_transforms()
 
-    def _get_train_transforms(self):
-        """Get training transforms with data augmentation"""
-        return aug_transforms(
-            size=self.image_size,
-            max_warp=0.1,
-            max_rotate=10.0,
-            max_zoom=1.1,
-            max_lighting=0.2,
-            do_flip=True,
-        )
+    def _create_ssl_transforms(self, augmentation_config):
+        """Create SSL-specific transforms from configuration"""
+        if not augmentation_config:
+            # Default SimCLR-style transforms if none provided
+            return transforms.Compose(
+                [
+                    transforms.RandomResizedCrop(self.image_size, scale=(0.08, 1.0)),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ColorJitter(
+                        brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1
+                    ),
+                    transforms.RandomGrayscale(p=0.2),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                    ),
+                ]
+            )
+
+        # Build transforms based on configuration
+        transform_list = []
+
+        for aug in augmentation_config:
+            # Handle each augmentation type
+            if "rrc" in aug:
+                # Random Resized Crop
+                config = aug["rrc"]
+                transform_list.append(
+                    transforms.RandomResizedCrop(
+                        config.get("crop_size", self.image_size),
+                        scale=(
+                            config.get("min_scale", 0.08),
+                            config.get("max_scale", 1.0),
+                        ),
+                    )
+                )
+            elif "color_jitter" in aug:
+                # Color Jitter
+                config = aug["color_jitter"]
+                transform_list.append(
+                    transforms.ColorJitter(
+                        brightness=config.get("brightness", 0.4),
+                        contrast=config.get("contrast", 0.4),
+                        saturation=config.get("saturation", 0.4),
+                        hue=config.get("hue", 0.1),
+                    )
+                )
+            elif "random_gray_scale" in aug:
+                # Random Grayscale
+                config = aug["random_gray_scale"]
+                transform_list.append(
+                    transforms.RandomGrayscale(p=config.get("prob", 0.2))
+                )
+            elif "random_horizontal_flip" in aug:
+                # Random Horizontal Flip
+                config = aug["random_horizontal_flip"]
+                transform_list.append(
+                    transforms.RandomHorizontalFlip(p=config.get("prob", 0.5))
+                )
+            elif "normalize" in aug:
+                # Normalization (should be after ToTensor)
+                config = aug["normalize"]
+                # Ensure ToTensor is added before normalization
+                if not any(isinstance(t, transforms.ToTensor) for t in transform_list):
+                    transform_list.append(transforms.ToTensor())
+                transform_list.append(
+                    transforms.Normalize(
+                        mean=config.get("mean", [0.485, 0.456, 0.406]),
+                        std=config.get("std", [0.229, 0.224, 0.225]),
+                    )
+                )
+
+        # Ensure ToTensor is included if not already
+        if not any(isinstance(t, transforms.ToTensor) for t in transform_list):
+            # Add ToTensor before any normalization
+            norm_idx = next(
+                (
+                    i
+                    for i, t in enumerate(transform_list)
+                    if isinstance(t, transforms.Normalize)
+                ),
+                len(transform_list),
+            )
+            transform_list.insert(norm_idx, transforms.ToTensor())
+
+        transform_list.append(ToTensor())
+
+        return transforms.Compose(transform_list)
 
     def _get_eval_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
@@ -96,7 +173,7 @@ class HuggingFaceDataModule:
             get_y=get_y,
             splitter=RandomSplitter(valid_pct=self.val_pct),
             item_tfms=[ToTensor()],
-            batch_tfms=self.train_tfms if is_train else self.eval_tfms,
+            batch_tfms=self.train_transform if is_train else self.eval_transform,
         )
 
         # Create DataLoaders

@@ -71,6 +71,7 @@ class BRIDGETrainer:
             pin_memory=self.cfg.dataset.pin_memory,
             image_size=self.cfg.dataset.image_size,
             keep_in_memory=False,  # Ensure we don't load entire dataset in memory
+            augmentations=self.cfg.augmentations,
         )
         data_module.setup()
         return data_module
