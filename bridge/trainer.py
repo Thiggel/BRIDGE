@@ -62,16 +62,16 @@ class BRIDGETrainer:
     def create_data_module(self):
         """Create data module for training"""
         data_module = HuggingFaceDataModule(
-            train_path=self.cfg.data.train_path,
-            val_path=self.cfg.data.val_path,
-            test_path=self.cfg.data.test_path,
-            train_split=self.cfg.data.split.train,
-            val_split=self.cfg.data.split.val,
-            test_split=self.cfg.data.split.test,
+            train_path=self.cfg.dataset.train_path,
+            val_path=self.cfg.dataset.val_path,
+            test_path=self.cfg.dataset.test_path,
+            train_split=self.cfg.dataset.split.train,
+            val_split=self.cfg.dataset.split.val,
+            test_split=self.cfg.dataset.split.test,
             batch_size=self.cfg.optimizer.batch_size,
-            num_workers=self.cfg.data.num_workers,
-            pin_memory=self.cfg.data.pin_memory,
-            image_size=self.cfg.data.image_size,
+            num_workers=self.cfg.dataset.num_workers,
+            pin_memory=self.cfg.dataset.pin_memory,
+            image_size=self.cfg.dataset.image_size,
             keep_in_memory=False,  # Ensure we don't load entire dataset in memory
         )
         data_module.setup()
@@ -155,7 +155,7 @@ class BRIDGETrainer:
             num_clusters=self.cfg.bridge.num_clusters,
             num_ood_samples_per_cluster=self.cfg.bridge.num_ood_samples_per_cluster,
             batch_size=self.cfg.optimizer.batch_size,
-            num_workers=self.cfg.data.num_workers,
+            num_workers=self.cfg.dataset.num_workers,
             experiment_name=self.name,
             cycle_idx=cycle_idx,
             output_dir=self.output_dir,
@@ -199,10 +199,10 @@ class BRIDGETrainer:
             num_generations_per_sample=self.cfg.bridge.num_generations_per_ood_sample,
             diffusion_model=self.cfg.bridge.diffusion_model,
             batch_size=self.cfg.optimizer.batch_size,
-            num_workers=self.cfg.data.num_workers,
+            num_workers=self.cfg.dataset.num_workers,
             experiment_name=self.name,
             cycle_idx=cycle_idx,
-            original_dataset_path=self.cfg.data.train_path,
+            original_dataset_path=self.cfg.dataset.train_path,
             output_dir=self.output_dir,
         )
 
@@ -213,7 +213,7 @@ class BRIDGETrainer:
         ):
             # Ablation: use removed data instead of generating new samples
             new_dataset_path = augmentor.add_removed_data(
-                self.cfg.data.removed_data_path
+                self.cfg.dataset.removed_data_path
             )
         else:
             # Normal case: generate new samples with diffusion model
@@ -226,7 +226,7 @@ class BRIDGETrainer:
             )
 
         # Update data module with new dataset
-        self.cfg.data.train_path = new_dataset_path
+        self.cfg.dataset.train_path = new_dataset_path
         self.data_module = self.create_data_module()
 
         return new_dataset_path
@@ -371,7 +371,7 @@ class BRIDGETrainer:
             dataset,
             batch_size=self.cfg.optimizer.batch_size,
             shuffle=False,
-            num_workers=self.cfg.data.num_workers,
+            num_workers=self.cfg.dataset.num_workers,
         )
 
         features, indices, labels = [], [], []
@@ -662,7 +662,7 @@ class BRIDGETrainer:
             feature_extractor=backbone,
             k_values=[1, 5, 10, 20, 50, 100],
             batch_size=dls.bs,
-            num_workers=self.cfg.data.num_workers,
+            num_workers=self.cfg.dataset.num_workers,
         )
 
         # Run evaluation
@@ -800,8 +800,8 @@ class BRIDGETrainer:
             if dataset_name.startswith("imagenet"):
                 # Imagenet-style datasets
                 path = Path(
-                    self.cfg.data.finetune_path
-                    if hasattr(self.cfg.data, "finetune_path")
+                    self.cfg.dataset.finetune_path
+                    if hasattr(self.cfg.dataset, "finetune_path")
                     else self.output_dir
                 )
                 dls = ImageDataLoaders.from_folder(

@@ -26,7 +26,7 @@ optimizer:
   batch_size: 256
 
 # Data settings
-data:
+dataset:
   num_workers: 4
   pin_memory: True
   image_size: 224
