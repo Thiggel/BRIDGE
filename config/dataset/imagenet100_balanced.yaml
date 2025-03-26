@@ -1,0 +1,11 @@
+name: imagenet100_balanced
+
+data:
+  train_path: "flaitenberger/imagenet-100-LT-balanced"
+  val_path: "flaitenberger/imagenet-100-LT-balanced"
+  test_path: "flaitenberger/imagenet-100-LT-balanced"
+  split:
+    train: "train"
+    val: "validation"
+    test: "test"
+  num_classes: 100

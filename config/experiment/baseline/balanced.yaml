@@ -1,0 +1,10 @@
+# Baseline using balanced dataset (no BRIDGE)
+name: baseline_balanced
+
+bridge:
+  num_cycles: 1  # Just train once, no cycles
+  num_epochs_per_cycle: ${trainer.max_epochs}
+
+# Override dataset to use balanced version
+defaults:
+  - override /dataset: imagenet100_balanced

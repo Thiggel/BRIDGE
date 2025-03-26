@@ -1,0 +1,10 @@
+# Ablation that adds back removed data instead of generating new samples
+name: ablation_removed_data
+
+bridge:
+  use_ood_augmentation: True
+  num_cycles: 5
+  num_epochs_per_cycle: ${expr:${trainer.max_epochs} / ${bridge.num_cycles}}
+  num_clusters: 5
+  num_ood_samples_per_cluster: 10
+  use_removed_data: True  # This will use removed data instead of diffusion

@@ -1,9 +1,0 @@
-_target_: solo_learn.data.dataset.prepare_hf_datasets
-dataset_name: ${data.dataset_name}
-train_transform: ${data.augmentations.train_transform}
-val_transform: ${data.augmentations.val_transform}
-streaming: ${data.streaming:false}
-image_key: ${data.image_key:image}
-label_key: ${data.label_key:label}
-cache_dir: ${data.cache_dir:null}
-token: ${data.token:null}

@@ -1,0 +1,28 @@
+name: mocov3
+
+model:
+  backbone: "vit_small"  # MoCo v3 works well with ViT models
+  pretrained: False
+  projection_dim: 256
+  momentum_tau: 0.996
+  temperature: 0.2
+  use_momentum_encoder: True
+  # MoCo v3 specific parameters
+  proj_hidden_dim: 4096  # Hidden dimension in projection MLP
+  pred_hidden_dim: 4096  # Hidden dimension in prediction MLP
+  use_predictor: True    # MoCo v3 uses a predictor network like BYOL
+  use_queue: False       # MoCo v3 doesn't use a queue unlike v1/v2
+
+# MoCo v3 prefers LARS optimizer
+optimizer:
+  name: lars
+  lr: 0.3
+  weight_decay: 1e-6
+  # LARS specific
+  trust_coefficient: 0.001
+  eps: 1e-8
+  
+# MoCo v3 uses cosine learning rate schedule
+scheduler:
+  name: cosine
+  warmup_epochs: 10

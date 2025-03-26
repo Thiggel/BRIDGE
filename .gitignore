@@ -172,3 +172,5 @@ dmypy.json
 *.sw?
 
 # End of https://www.gitignore.io/api/python,visualstudiocode
+.null-ls*
+.env

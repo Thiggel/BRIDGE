@@ -1,0 +1,11 @@
+name: bridge
+
+bridge:
+  # Method specific settings
+  use_ood_augmentation: True
+  num_cycles: 5
+  num_epochs_per_cycle: ${expr:${trainer.max_epochs} / ${bridge.num_cycles}}
+  num_clusters: 5
+  num_ood_samples_per_cluster: 10
+  diffusion_model: "stabilityai/stable-diffusion-2-1"
+  num_generations_per_ood_sample: 5

@@ -1,0 +1,40 @@
+# Config for fine-tuning pre-trained models
+# @package _global_
+
+# Inherit from base config
+defaults:
+  - config
+  - _self_
+
+# Override name to indicate fine-tuning
+name: ${model.name}_finetune
+
+# Finetune-specific settings
+finetune:
+  # Datasets to fine-tune on
+  datasets:
+    - cifar10
+    - cifar100
+    - caltech101
+    - pets
+    - flowers
+  
+  # Fine-tuning hyperparameters
+  num_epochs: 5
+  lr: 0.001
+  batch_size: 64
+  mixup: 0.1
+  
+  # Transfer learning settings
+  freeze_backbone: True
+  unfreeze_layers: 0  # 0 means completely frozen backbone
+  
+  # Path to pretrained model
+  # If null, will use the model trained with the bridge trainer
+  # pretrained_path: "/path/to/pretrained/model.pth"
+  pretrained_path: null
+
+# Data settings for fine-tuning
+data:
+  # Path for additional datasets not included in FastAI (optional)
+  finetune_path: ${oc.env:FINETUNE_DATA_DIR,${base_dir}/finetune_data}
