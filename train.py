@@ -26,7 +26,7 @@ def set_seed(seed: int):
 def main(cfg: DictConfig):
     """Main entry point for the application"""
     # Print current config
-    print(OmegaConf.to_yaml(cfg))
+    print(OmegaConf.to_yaml(cfg, resolve=True))
 
     # Set random seed
     set_seed(cfg.seed)

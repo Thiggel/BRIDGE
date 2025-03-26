@@ -162,7 +162,7 @@ class HuggingFaceDataModule:
 
         # Define item getter function
         def get_x(row):
-            img_array = Image.fromarray(np.array(row["image"]))
+            img_array = Image.fromarray(np.array(row["image"])).to_numpy()
 
             return img_array
 
@@ -174,7 +174,7 @@ class HuggingFaceDataModule:
             get_x=get_x,
             get_y=get_y,
             splitter=RandomSplitter(valid_pct=self.val_pct),
-            item_tfms=None,
+            item_tfms=ToTensor(),
             batch_tfms=self.train_transform if is_train else self.eval_transform,
         )
 
