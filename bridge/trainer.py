@@ -62,7 +62,7 @@ class BRIDGETrainer:
     def create_data_module(self):
         """Create data module for training"""
         data_module = HuggingFaceDataModule(
-            path=self.cfg.dataset.train_path,
+            path=self.cfg.dataset.path,
             train_split=self.cfg.dataset.split.train,
             val_split=self.cfg.dataset.split.val,
             test_split=self.cfg.dataset.split.test,
@@ -200,7 +200,7 @@ class BRIDGETrainer:
             num_workers=self.cfg.dataset.num_workers,
             experiment_name=self.name,
             cycle_idx=cycle_idx,
-            original_dataset_path=self.cfg.dataset.train_path,
+            original_dataset_path=self.cfg.dataset.path,
             output_dir=self.output_dir,
         )
 
@@ -224,7 +224,7 @@ class BRIDGETrainer:
             )
 
         # Update data module with new dataset
-        self.cfg.dataset.train_path = new_dataset_path
+        self.cfg.dataset.path = new_dataset_path
         self.data_module = self.create_data_module()
 
         return new_dataset_path
