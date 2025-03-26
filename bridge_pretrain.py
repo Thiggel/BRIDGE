@@ -23,6 +23,7 @@ import json
 
 import hydra
 import torch
+from torchvision import transforms
 from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.loggers.wandb import WandbLogger
@@ -262,7 +263,7 @@ def main(cfg: DictConfig):
     #   3.4. change dataset path in cfg to the new dataset
     # 4. repeat from (1) until num_cycles is reached
     for cycle_idx in range(cfg.bridge.num_cycles):
-        print(cfg.augmentations[0])
+        print(cfg.augmentations[0].rrc.crop_size)
         exit()
         print(f"Cycle {cycle_idx + 1}/{cfg.bridge.num_cycles}")
         trainer = Trainer(**trainer_kwargs)
@@ -283,10 +284,19 @@ def main(cfg: DictConfig):
         )
 
         old_transform = train_dataset.transform
-        train_dataset.transform = transform
+        train_dataset.transform = transforms.Compose(
+            [
+                transforms.Resize(cfg.augmentations[0].rrc.crop_size),
+                transforms.Normalize(
+                    mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
+                ),
+                transforms.ToTensor(),
+            ]
+        )
         ood_datapoints, ood_embeddings, ood_classes = ood_detector.get_ood_datapoints(
             train_dataset
         )
+        train_dataset.transform = old_transform
 
         dataset_augmentor = DatasetAugmentor(
             cfg.bridge.num_generations_per_ood_sample,
