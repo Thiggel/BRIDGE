@@ -135,7 +135,7 @@ class HuggingFaceDataModule:
 
         return transforms.Compose(transform_list)
 
-    def _get_eval_transforms(self):
+    def _create_eval_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
         return [
             Resize(self.image_size),
