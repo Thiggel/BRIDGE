@@ -44,8 +44,8 @@ from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import make_contiguous, omegaconf_select
 
-from .ood_detector import OODDetector
-from .dataset_augmentor import DatasetAugmentor
+from solo.utils.ood_detector import OODDetector
+from solo.utils.dataset_augmentor import DatasetAugmentor
 
 try:
     from solo.data.dali_dataloader import (
