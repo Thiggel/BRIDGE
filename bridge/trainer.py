@@ -744,6 +744,11 @@ class BRIDGETrainer:
                 "size": 224,
                 "func": lambda path: untar_data(URLs.FOOD),
             },
+            "birds": {
+                "cls": vision_learner,
+                "size": 224,
+                "func": lambda path: untar_data(URLs.CUB_200_2011),
+            },
             # More specialized datasets
             "cars": {
                 "cls": vision_learner,
@@ -847,6 +852,7 @@ class BRIDGETrainer:
             "flowers",
             "food",
             "cars",
+            "birds",
         ]
 
         # Results containers
