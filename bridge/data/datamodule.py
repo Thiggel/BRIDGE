@@ -155,7 +155,7 @@ class HuggingFaceDataModule:
 
         dblock = DataBlock(
             blocks=(ImageBlock, CategoryBlock),
-            get_x=lambda row: np.array(row["image"]).astype(np.float),
+            get_x=lambda row: np.array(row["image"]).astype(np.float64),
             get_y=lambda row: row["label"],
             item_tfms=[PILImage.create],
             splitter=RandomSplitter(valid_pct=self.val_pct),
