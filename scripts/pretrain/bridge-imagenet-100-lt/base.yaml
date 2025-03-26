@@ -1,5 +1,4 @@
 bridge:
-  num_epochs_per_cycle: 10
   use_ood_augmentation: True
   num_cycles: 5
   num_clusters: 5
@@ -22,4 +21,4 @@ precision: 32
 devices: auto
 accelerator: "gpu"
 strategy: "ddp"
-max_epochs: 300
+max_epochs: 60

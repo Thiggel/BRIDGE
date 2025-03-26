@@ -44,6 +44,9 @@ from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import make_contiguous, omegaconf_select
 
+from .ood_detector import OODDetector
+from .dataset_augmentor import DatasetAugmentor
+
 try:
     from solo.data.dali_dataloader import (
         PretrainDALIDataModule,
@@ -64,8 +67,6 @@ else:
 
 @hydra.main(version_base="1.2")
 def main(cfg: DictConfig):
-    print(OmegaConf.to_yaml(cfg))
-    exit()
     # hydra doesn't allow us to add new keys for "safety"
     # set_struct(..., False) disables this behavior and allows us to add more parameters
     # without making the user specify every single thing about the model
@@ -243,12 +244,59 @@ def main(cfg: DictConfig):
             ),
         }
     )
-    trainer = Trainer(**trainer_kwargs)
 
-    if cfg.data.format == "dali":
-        trainer.fit(model, ckpt_path=ckpt_path, datamodule=dali_datamodule)
-    else:
-        trainer.fit(model, train_loader, val_loader, ckpt_path=ckpt_path)
+    # for cycle_idx in range(cfg.bridge.num_cycles):
+    # 1. pretrain for n_epochs_per_cycle epochs
+    # 2. get ood datapoints
+    #   2.1. get embeddings for all datapoints
+    #   2.2. fit GMM with num_clusters
+    #   2.3. for each cluster, get num_ood_samples_per_cluster samples based on the lowest prob
+    #   2.4. plot UMAP with all embeddings, their cluster assignments, and ood datapoints
+    #   2.5. make same UMAP plot but with class assignment instead of clusters
+    #   2.6 upload to wandb
+    #   2.4. return ood datapoint indices, embeddings and their classes
+    # 3. for each ood datapoint, generate num_generations_per_ood_sample new datapoints
+    #   3.1. load stable diffusion or other model for similar image generation
+    #   3.2. generate new datapoints
+    #   3.3. copy current dataset to new dataset with all existing plus new datapoints, give it a name based on the cycle, the number of generated data points etc.
+    #   3.4. change dataset path in cfg to the new dataset
+    # 4. repeat from (1) until num_cycles is reached
+    for cycle_idx in range(cfg.bridge.num_cycles):
+        trainer = Trainer(**trainer_kwargs)
+
+        if cfg.data.format == "dali":
+            trainer.fit(model, ckpt_path=ckpt_path, datamodule=dali_datamodule)
+        else:
+            trainer.fit(model, train_loader, val_loader, ckpt_path=ckpt_path)
+
+        ood_detector = OODDetector(
+            model,
+            cfg.bridge.num_clusters,
+            cfg.bridge.num_ood_samples_per_cluster,
+            cfg.optimizer.batch_size,
+            cfg.data.num_workers,
+            cfg.name,
+            cycle_idx,
+        )
+        ood_datapoints, ood_embeddings, ood_classes = ood_detector.get_ood_datapoints(
+            train_loader
+        )
+
+        dataset_augmentor = DatasetAugmentor(
+            cfg.bridge.num_generations_per_ood_sample,
+            cfg.bridge.diffusion_model,
+            cfg.optimizer.batch_size,
+            cfg.data.num_workers,
+            cfg.name,
+            cycle_idx,
+            cfg.data.train_path,
+        )
+        dataset_augmentor.augment_dataset(ood_datapoints, ood_embeddings, ood_classes)
+
+        # update cfg with new dataset path
+        cfg.data.train_path = dataset_augmentor.new_dataset_path
+
+        OmegaConf.set_struct(cfg, True)
 
 
 if __name__ == "__main__":
