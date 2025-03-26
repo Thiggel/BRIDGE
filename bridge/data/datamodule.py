@@ -155,8 +155,9 @@ class HuggingFaceDataModule:
 
         dblock = DataBlock(
             blocks=(ImageBlock, CategoryBlock),
-            get_x=lambda row: PILImage.create(np.array(row["image"]).astype(np.uint8)),
+            get_x=lambda row: np.array(row["image"]).astype(np.uint8),
             get_y=lambda row: row["label"],
+            item_tfms=[PILImage.create],
             splitter=RandomSplitter(valid_pct=self.val_pct),
             batch_tfms=self.train_transform if is_train else self.eval_transform,
         )
