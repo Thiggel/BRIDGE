@@ -41,8 +41,6 @@ class HuggingFaceDataModule:
         self.val_pct = val_pct
 
         self.train_dataset = None
-        self.val_dataset = None
-        self.test_dataset = None
 
         # Setup transforms
         self.train_tfms = self._get_train_transforms()
@@ -80,59 +78,7 @@ class HuggingFaceDataModule:
         except Exception as e:
             raise ValueError(f"Error loading training dataset: {e}")
 
-        # Load or create validation dataset
-        try:
-            if val_split is None:
-                raise ValueError("Validation split not specified")
-
-            # Try to load the validation split
-            print(
-                f"Trying to load validation split '{self.val_split}' from {self.val_path}"
-            )
-            self.val_dataset = load_dataset(
-                self.path,
-                split=self.val_split,
-                keep_in_memory=self.keep_in_memory,
-            )
-        except Exception as e:
-            print(f"Validation split not found: {e}")
-            print(
-                f"Creating validation split from training data (using {self.val_pct*100:.1f}% of data)"
-            )
-            # Create a validation split from training data
-            train_val_split = self.train_dataset.train_test_split(
-                test_size=self.val_pct, seed=42
-            )
-            self.train_dataset = train_val_split["train"]
-            self.val_dataset = train_val_split["test"]
-
-        # Load test dataset if available, otherwise set to None
-        if self.test_split is not None:
-            try:
-                print(f"Trying to load test dataset from {self.test_path}")
-                self.test_dataset = load_dataset(
-                    self.test_path,
-                    split=self.test_split,
-                    keep_in_memory=self.keep_in_memory,
-                )
-            except Exception as e:
-                print(f"Test split not found, using validation dataset as test: {e}")
-                self.test_dataset = self.val_dataset
-        else:
-            print("No test dataset specified, using validation dataset as test")
-            self.test_dataset = self.val_dataset
-
-        print(
-            f"Dataset splits - Train: {len(self.train_dataset)}, Val: {len(self.val_dataset)}, Test: {len(self.test_dataset) if self.test_dataset else 0}"
-        )
-
-        # Convert to FastAI DataLoaders
         self.train_dls = self._create_dataloaders(self.train_dataset, is_train=True)
-        self.val_dls = self._create_dataloaders(self.val_dataset, is_train=False)
-        if self.test_dataset:
-            self.test_dls = self._create_dataloaders(self.test_dataset, is_train=False)
-        else:
-            self.test_dls = self.val_dls
 
     def _create_dataloaders(self, dataset, is_train=True):
         """Convert HuggingFace dataset to FastAI DataLoaders"""
@@ -148,8 +94,8 @@ class HuggingFaceDataModule:
         dblock = DataBlock(
             get_x=get_x,
             get_y=get_y,
-            splitter=None,  # No splitting as we already have train/val/test
-            item_tfms=None,  # Will be applied in batch_tfms
+            splitter=RandomSplitter(valid_pct=self.val_pct),
+            item_tfms=[ToTensor()],
             batch_tfms=self.train_tfms if is_train else self.eval_tfms,
         )
 
@@ -164,14 +110,6 @@ class HuggingFaceDataModule:
     def train_dataloader(self):
         """Get training DataLoader"""
         return self.train_dls
-
-    def val_dataloader(self):
-        """Get validation DataLoader"""
-        return self.val_dls
-
-    def test_dataloader(self):
-        """Get test DataLoader"""
-        return self.test_dls
 
     def update_train_dataset(self, new_dataset_path):
         """Update training dataset with a new one"""
