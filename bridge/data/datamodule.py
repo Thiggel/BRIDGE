@@ -1,6 +1,7 @@
 import os
 from typing import Optional, Dict, Any, List
 from pathlib import Path
+from PIL import Image
 
 import torch
 import numpy as np
@@ -161,7 +162,7 @@ class HuggingFaceDataModule:
 
         # Define item getter function
         def get_x(row):
-            img_array = np.array(row["image"])
+            img_array = Image.from_array(np.array(row["image"]))
 
             print(img_array.shape)
             exit()
