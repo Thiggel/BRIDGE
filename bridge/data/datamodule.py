@@ -163,7 +163,11 @@ class HuggingFaceDataModule:
 
         # Define item getter function
         def get_x(row):
-            return row["image"]
+            img = row["image"]
+            if not isinstance(img, Tensor):
+                img = torch.tensor(img)
+
+            return img
 
         def get_y(row):
             return row["label"]
