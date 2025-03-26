@@ -12,7 +12,6 @@ use_wandb: True
 
 # Training settings
 trainer:
-  max_epochs: 200
   precision: 32
   accelerator: gpu
   devices: auto

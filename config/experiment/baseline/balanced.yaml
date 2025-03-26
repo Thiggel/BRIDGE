@@ -3,7 +3,7 @@ name: baseline_balanced
 
 bridge:
   num_cycles: 1  # Just train once, no cycles
-  num_epochs_per_cycle: ${trainer.max_epochs}
+  num_epochs_per_cycle: 60, 
 
 # Override dataset to use balanced version
 defaults:

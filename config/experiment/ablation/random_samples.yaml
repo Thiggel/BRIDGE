@@ -4,7 +4,7 @@ name: ablation_random_samples
 bridge:
   use_ood_augmentation: False  # This will make the trainer use random samples
   num_cycles: 5
-  num_epochs_per_cycle: ${expr:${trainer.max_epochs} / ${bridge.num_cycles}}
+  num_epochs_per_cycle: 60,
   num_clusters: 5
   num_ood_samples_per_cluster: 10
   diffusion_model: "stabilityai/stable-diffusion-2-1"
