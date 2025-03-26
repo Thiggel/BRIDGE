@@ -48,7 +48,9 @@ class OODDetector:
         features, indices, targets = [], [], []
 
         self.feature_extractor.eval()
-        for batch, _ in tqdm(dataloader, desc="Extracting features"):
+        for batch in tqdm(dataloader, desc="Extracting features"):
+            print(batch)
+            exit()
             images, labels = batch
             batch_indices = torch.arange(len(indices), len(indices) + len(images))
 
