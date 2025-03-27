@@ -95,7 +95,7 @@ class HuggingFaceDataModule:
 
         transform_list.append(Normalize.from_stats(*imagenet_stats))
 
-        return Pipeline(Normalize.from_stats(*imagenet_stats))
+        return Pipeline([Normalize.from_stats(*imagenet_stats)])
 
     def _create_eval_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
