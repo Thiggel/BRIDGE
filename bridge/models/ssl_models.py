@@ -6,6 +6,14 @@ from fastai.vision.all import *
 import lightly
 from lightly.models import utils
 from lightly.models.modules import heads
+from lightly.transforms.simclr_transform import SimCLRTransform
+from lightly.transforms.moco_transform import MoCoV2Transform
+from lightly.transforms.dino_transform import DINOTransform
+from lightly.transforms.byol_transform import (
+    BYOLTransform,
+    BYOLView1Transform,
+    BYOLView2Transform,
+)
 from transformers import AutoModel, AutoConfig
 
 
@@ -18,6 +26,7 @@ class LightlySSLModel(nn.Module):
         projection_dim: int = 256,
         num_ftrs: Optional[int] = None,
         pretrained: bool = False,
+        transform: Optional[Callable] = None,
         *args,
         **kwargs,
     ):
@@ -25,6 +34,7 @@ class LightlySSLModel(nn.Module):
 
         self.backbone_name = backbone
         self.projection_dim = projection_dim
+        self.transform = transform
 
         # Create backbone
         self.backbone, self.num_ftrs = self._create_backbone(
@@ -92,6 +102,9 @@ class LightlySSLModel(nn.Module):
 
     def forward(self, x):
         """Extract features from the backbone"""
+        if self.transform:
+            x = self.transform(x)
+
         return self.backbone(x)
 
     def get_features(self, x):
@@ -114,7 +127,9 @@ class DINO(LightlySSLModel):
         *args,
         **kwargs,
     ):
-        super().__init__(backbone, projection_dim, pretrained=pretrained)
+        super().__init__(
+            backbone, projection_dim, pretrained=pretrained, transform=DINOTransform()
+        )
 
         # Create model using lightly's DINO implementation
         self.model = lightly.models.DINO(
@@ -153,7 +168,9 @@ class SimCLR(LightlySSLModel):
         *args,
         **kwargs,
     ):
-        super().__init__(backbone, projection_dim, pretrained=pretrained)
+        super().__init__(
+            backbone, projection_dim, pretrained=pretrained, transform=SimCLRTransform()
+        )
 
         # Create model using lightly's SimCLR implementation
         self.model = lightly.models.SimCLR(
@@ -188,10 +205,23 @@ class BarlowTwins(LightlySSLModel):
         projection_dim: int = 2048,
         pretrained: bool = False,
         lambda_param: float = 0.0051,
+        input_size: int = 224,
         *args,
         **kwargs,
     ):
-        super().__init__(backbone, projection_dim, pretrained=pretrained)
+        super().__init__(
+            backbone,
+            projection_dim,
+            pretrained=pretrained,
+            transform=BYOLTransform(
+                view_1_transform=BYOLView1Transform(
+                    input_size=input_size, gaussian_blur=0.0
+                ),
+                view_2_transform=BYOLView2Transform(
+                    input_size=input_size, gaussian_blur=0.0
+                ),
+            ),
+        )
 
         # Create model using lightly's BarlowTwins implementation
         self.model = lightly.models.BarlowTwins(
@@ -225,10 +255,23 @@ class BYOL(LightlySSLModel):
         projection_dim: int = 128,
         pretrained: bool = False,
         momentum_tau: float = 0.996,
+        input_size: int = 224,
         *args,
         **kwargs,
     ):
-        super().__init__(backbone, projection_dim, pretrained=pretrained)
+        super().__init__(
+            backbone,
+            projection_dim,
+            pretrained=pretrained,
+            transform=BYOLTransform(
+                view_1_transform=BYOLView1Transform(
+                    input_size=input_size, gaussian_blur=0.0
+                ),
+                view_2_transform=BYOLView2Transform(
+                    input_size=input_size, gaussian_blur=0.0
+                ),
+            ),
+        )
 
         # Create model using lightly's BYOL implementation
         self.model = lightly.models.BYOL(
@@ -266,7 +309,9 @@ class MoCo(LightlySSLModel):
         *args,
         **kwargs,
     ):
-        super().__init__(backbone, projection_dim, pretrained=pretrained)
+        super().__init__(
+            backbone, projection_dim, pretrained=pretrained, transform=MoCoV2Transform()
+        )
 
         # Create model using lightly's MoCo implementation
         self.model = lightly.models.MoCo(
@@ -310,7 +355,9 @@ class MoCoV3(LightlySSLModel):
         *args,
         **kwargs,
     ):
-        super().__init__(backbone, projection_dim, pretrained=pretrained)
+        super().__init__(
+            backbone, projection_dim, pretrained=pretrained, transform=MocoV2Transform()
+        )
 
         # Create model using lightly's MoCoV3 implementation
         # In lightly, MoCoV3 is built with custom projector and predictor

@@ -11,24 +11,6 @@ from fastai.vision.all import *
 from datasets import load_dataset, Dataset, concatenate_datasets
 
 
-class ShapePrinter(Transform):
-    def __init__(self, position=""):
-        self.position = position
-        super().__init__()
-
-    def encodes(self, x):
-        # Only print for actual tensors or images
-        if isinstance(x, (torch.Tensor, TensorImage, PILImage)):
-            if isinstance(x, (torch.Tensor, TensorImage)):
-                print(f"Shape at {self.position}: {x.shape}")
-            else:
-                print(f"PIL Image at {self.position}: {x.size}")
-        return x
-
-    def __repr__(self):
-        return f"ShapePrinter({self.position})"
-
-
 class HuggingFaceDataModule:
     """Data module for HuggingFace datasets with FastAI integration"""
 
@@ -64,11 +46,13 @@ class HuggingFaceDataModule:
 
     def _create_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
-        return [
+        transforms = [
             Resize(self.image_size),
             Normalize.from_stats(*imagenet_stats),
-            self.transform,
         ]
+
+        if self.transform is not None:
+            transforms.append(self.transform)
 
     def setup(self):
         """Setup datasets, handling missing splits by creating them"""

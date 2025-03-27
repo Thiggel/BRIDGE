@@ -69,30 +69,6 @@ class BRIDGETrainer:
                 config=OmegaConf.to_container(self.cfg, resolve=True),
             )
 
-    def get_transform(self, ssl_method: str, input_size: int):
-        return {
-            "simclr": lambda input_size: SimCLRTransform(),
-            "moco": lambda input_size: MoCoV2Transform(),
-            "mocov3": lambda input_size: MoCoV2Transform(),
-            "dino": lambda input_size: DINOTransform(),
-            "barlow_twins": lambda input_size: BYOLTransform(
-                view_1_transform=BYOLView1Transform(
-                    input_size=input_size, gaussian_blur=0.0
-                ),
-                view_2_transform=BYOLView2Transform(
-                    input_size=input_size, gaussian_blur=0.0
-                ),
-            ),
-            "byol": lambda input_size: BYOLTransform(
-                view_1_transform=BYOLView1Transform(
-                    input_size=input_size, gaussian_blur=0.0
-                ),
-                view_2_transform=BYOLView2Transform(
-                    input_size=input_size, gaussian_blur=0.0
-                ),
-            ),
-        }[ssl_method](input_size)
-
     def create_data_module(self):
         """Create data module for training"""
         data_module = HuggingFaceDataModule(
@@ -105,9 +81,6 @@ class BRIDGETrainer:
             pin_memory=self.cfg.dataset.pin_memory,
             image_size=self.cfg.dataset.image_size,
             keep_in_memory=False,  # Ensure we don't load entire dataset in memory
-            transform=self.get_transform(
-                self.cfg.model.name, self.cfg.dataset.image_size
-            ),
         )
         data_module.setup()
         return data_module
@@ -119,6 +92,7 @@ class BRIDGETrainer:
             backbone=self.cfg.model.backbone,
             projection_dim=self.cfg.model.projection_dim,
             pretrained=self.cfg.model.pretrained,
+            input_size=self.cfg.dataset.image_size,
             **{
                 k: v
                 for k, v in self.cfg.model.items()
