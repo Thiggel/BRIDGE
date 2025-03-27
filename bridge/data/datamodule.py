@@ -49,40 +49,30 @@ class HuggingFaceDataModule:
 
     def _create_ssl_transforms(self, augmentation_config):
         """Create SSL-specific transforms using FastAI"""
-        base_transforms = [
-            Resize((self.image_size, self.image_size), method=ResizeMethod.Squish)
-        ]
         if not augmentation_config:
-            return (
-                base_transforms
-                + aug_transforms(
-                    size=(self.image_size, self.image_size),
-                    min_scale=0.08,  # Equivalent to RandomResizedCrop(scale=(0.08, 1.0))
-                    flip_vert=False,  # Horizontal flip only
-                    max_lighting=0.4,  # ColorJitter (brightness, contrast)
-                    max_warp=0,  # No affine transform
-                    max_rotate=0,  # No rotation
-                    do_flip=True,  # Enables RandomHorizontalFlip
-                    pad_mode=PadMode.Zeros,
-                    p_lighting=0.75,  # Probability for brightness & contrast
-                )
-                + [
-                    Contrast(max_lighting=0, p=0.2),
-                    Normalize.from_stats(*imagenet_stats),
-                ]
-            )
+            return aug_transforms(
+                size=(self.image_size, self.image_size),
+                min_scale=0.08,  # Equivalent to RandomResizedCrop(scale=(0.08, 1.0))
+                flip_vert=False,  # Horizontal flip only
+                max_lighting=0.4,  # ColorJitter (brightness, contrast)
+                max_warp=0,  # No affine transform
+                max_rotate=0,  # No rotation
+                do_flip=True,  # Enables RandomHorizontalFlip
+                pad_mode=PadMode.Zeros,
+                p_lighting=0.75,  # Probability for brightness & contrast
+            ) + [
+                Contrast(max_lighting=0, p=0.2),
+                Normalize.from_stats(*imagenet_stats),
+            ]
 
-        transform_list = base_transforms
+        transform_list = []
 
         for aug in augmentation_config:
             if "rrc" in aug:
                 config = aug["rrc"]
                 transform_list.append(
-                    RandomResizedCropGPU(
-                        size=(
-                            config.get("crop_size", self.image_size),
-                            config.get("crop_size", self.image_size),
-                        ),
+                    RandomResizedCrop(
+                        size=config.get("crop_size", self.image_size),
                         min_scale=config.get("min_scale", 0.08),
                         max_scale=config.get("max_scale", 1.0),
                     )
@@ -118,7 +108,7 @@ class HuggingFaceDataModule:
         )
 
         return [
-            Resize((self.image_size, self.image_size), method=ResizeMethod.Squish),
+            Resize(self.image_size),
             Normalize.from_stats(
                 *(normalize_config if normalize_config else imagenet_stats)
             ),
