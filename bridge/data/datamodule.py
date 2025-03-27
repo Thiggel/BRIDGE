@@ -125,7 +125,6 @@ class HuggingFaceDataModule:
             print(t)
             print()
         print("-" * 50)
-        exit()
 
         return transform_list
 
