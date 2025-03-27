@@ -8,6 +8,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from fastai.vision.all import *
+from fastai.data.all import *
 from datasets import load_dataset, Dataset, concatenate_datasets
 
 
@@ -94,7 +95,7 @@ class HuggingFaceDataModule:
 
         transform_list.append(Normalize.from_stats(*imagenet_stats))
 
-        return transform_list
+        return Pipeline(transform_list)
 
     def _create_eval_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
@@ -104,12 +105,14 @@ class HuggingFaceDataModule:
             else None
         )
 
-        return [
-            Resize(self.image_size),
-            Normalize.from_stats(
-                *(normalize_config if normalize_config else imagenet_stats)
-            ),
-        ]
+        return Pipeline(
+            [
+                Resize(self.image_size),
+                Normalize.from_stats(
+                    *(normalize_config if normalize_config else imagenet_stats)
+                ),
+            ]
+        )
 
     def setup(self):
         """Setup datasets, handling missing splits by creating them"""
