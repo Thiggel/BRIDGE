@@ -77,7 +77,7 @@ class HuggingFaceDataModule:
                 )
             elif "color_jitter" in aug:
                 config = aug["color_jitter"]
-                transform_list.append(
+                transform_list.extend(
                     aug_transforms(
                         max_lighting=config.get("brightness", 0.4),
                         p_lighting=0.75,
