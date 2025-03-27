@@ -72,7 +72,7 @@ class BRIDGETrainer:
     def get_transform(self, ssl_method: str, input_size: int):
         return {
             "simclr": lambda input_size: SimCLRTransform(),
-            "moco": lambda input_size: SimCLRTransformMoCoV2Transform(),
+            "moco": lambda input_size: MoCoV2Transform(),
             "mocov3": lambda input_size: MoCoV2Transform(),
             "dino": lambda input_size: DINOTransform(),
             "barlow_twins": lambda input_size: BYOLTransform(
@@ -91,7 +91,7 @@ class BRIDGETrainer:
                     input_size=input_size, gaussian_blur=0.0
                 ),
             ),
-        }[ssl_method]
+        }[ssl_method]()
 
     def create_data_module(self):
         """Create data module for training"""
