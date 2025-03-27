@@ -62,7 +62,7 @@ class HuggingFaceDataModule:
                 p_lighting=0.75,  # Probability for brightness & contrast
             ) + [Contrast(max_lighting=0, p=0.2), Normalize.from_stats(*imagenet_stats)]
 
-        transform_list = []
+        transform_list = [Resize(self.image_size, self.image_size)]
 
         for aug in augmentation_config:
             if "rrc" in aug:
