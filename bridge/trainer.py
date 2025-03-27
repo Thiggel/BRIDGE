@@ -155,7 +155,7 @@ class BRIDGETrainer:
             cbs=self.callbacks,
         )
 
-        learn.path = Path(os.environ.get("BASE_CACHE_DIR", "/tmp"))
+        learner.path = Path(os.environ.get("BASE_CACHE_DIR", "/tmp"))
 
         # Train for specified number of epochs
         with learner.distrib_ctx():
