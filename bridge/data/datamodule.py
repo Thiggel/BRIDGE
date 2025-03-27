@@ -88,6 +88,7 @@ class HuggingFaceDataModule:
             bs=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            device=torch.device("cpu"),
         )
 
     def train_dataloader(self):
