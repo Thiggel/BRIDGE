@@ -54,6 +54,8 @@ class HuggingFaceDataModule:
         if self.transform is not None:
             transforms.append(self.transform)
 
+        return transforms
+
     def setup(self):
         """Setup datasets, handling missing splits by creating them"""
         print(f"Loading training dataset from {self.path}")
