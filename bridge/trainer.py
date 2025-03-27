@@ -10,6 +10,7 @@ import wandb
 from omegaconf import OmegaConf, DictConfig
 from fastai.vision.all import *
 from fastai.distributed import *
+from fastai.callbacks import WandbCallback, SaveModelCallback, EarlyStoppingCallback
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.mixture import GaussianMixture
