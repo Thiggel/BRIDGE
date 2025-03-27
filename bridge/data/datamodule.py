@@ -162,7 +162,7 @@ class HuggingFaceDataModule:
             get_x=lambda row: row["image"],
             get_y=lambda row: class_names[row["label"]],
             splitter=RandomSplitter(valid_pct=self.val_pct),
-            batch_tfms=self.train_transform if is_train else self.eval_transform,
+            item_tfms=self.train_transform if is_train else self.eval_transform,
         )
 
         return dblock.dataloaders(
