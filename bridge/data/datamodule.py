@@ -8,7 +8,6 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from fastai.vision.all import *
-from fastai.data.all import *
 from datasets import load_dataset, Dataset, concatenate_datasets
 
 
@@ -68,22 +67,22 @@ class HuggingFaceDataModule:
         for aug in augmentation_config:
             if "rrc" in aug:
                 config = aug["rrc"]
-                # transform_list.append(
-                #    RandomResizedCropGPU(
-                #        size=config.get("crop_size", self.image_size),
-                #        min_scale=config.get("min_scale", 0.08),
-                #        max_scale=config.get("max_scale", 1.0),
-                #    )
-                # )
+                transform_list.append(
+                    RandomResizedCropGPU(
+                        size=config.get("crop_size", self.image_size),
+                        min_scale=config.get("min_scale", 0.08),
+                        max_scale=config.get("max_scale", 1.0),
+                    )
+                )
             elif "color_jitter" in aug:
                 config = aug["color_jitter"]
-                # transform_list.extend(
-                #    aug_transforms(
-                #        max_lighting=config.get("brightness", 0.4),
-                #        p_lighting=0.75,
-                #        size=self.image_size,
-                #    )
-                # )
+                transform_list.extend(
+                    aug_transforms(
+                        max_lighting=config.get("brightness", 0.4),
+                        p_lighting=0.75,
+                        size=self.image_size,
+                    )
+                )
             elif "random_gray_scale" in aug:
                 config = aug["random_gray_scale"]
                 transform_list.append(
@@ -95,7 +94,7 @@ class HuggingFaceDataModule:
 
         transform_list.append(Normalize.from_stats(*imagenet_stats))
 
-        return Pipeline([Normalize.from_stats(*imagenet_stats)])
+        return transform_list
 
     def _create_eval_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
@@ -105,14 +104,12 @@ class HuggingFaceDataModule:
             else None
         )
 
-        return Pipeline(
-            [
-                Resize(self.image_size),
-                Normalize.from_stats(
-                    *(normalize_config if normalize_config else imagenet_stats)
-                ),
-            ]
-        )
+        return [
+            Resize(self.image_size),
+            Normalize.from_stats(
+                *(normalize_config if normalize_config else imagenet_stats)
+            ),
+        ]
 
     def setup(self):
         """Setup datasets, handling missing splits by creating them"""
