@@ -12,9 +12,9 @@ from datasets import load_dataset, Dataset, concatenate_datasets
 
 
 class DebugShape(Transform):
-    def __init__(self, name=""):
+    def __init__(self, label=""):
         super().__init__()
-        self.name = name  # Optional label to identify where in the pipeline this is
+        self.label = label  # Optional label to identify where in the pipeline this is
 
     def encodes(self, x):
         if isinstance(x, TensorImage) or isinstance(x, torch.Tensor):
