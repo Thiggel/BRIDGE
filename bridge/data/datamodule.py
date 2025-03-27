@@ -119,6 +119,7 @@ class HuggingFaceDataModule:
         transform_list.append(Normalize.from_stats(*imagenet_stats))
 
         transform_list.append(ShapePrinter("after_normalize"))
+        transform_list.append(ShapePrinter("after_normalize2"))
 
         return transform_list
 
@@ -155,9 +156,6 @@ class HuggingFaceDataModule:
         """Convert HuggingFace dataset to FastAI DataLoaders"""
 
         class_names = dataset.features["label"].names
-
-        print(self.train_transform)
-        exit()
 
         dblock = DataBlock(
             blocks=(ImageBlock, CategoryBlock),
