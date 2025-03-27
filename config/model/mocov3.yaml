@@ -24,5 +24,5 @@ optimizer:
   
 # MoCo v3 uses cosine learning rate schedule
 scheduler:
-  name: cosine
+  policy: cosine
   warmup_epochs: 10
