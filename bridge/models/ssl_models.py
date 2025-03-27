@@ -6,6 +6,7 @@ from fastai.vision.all import *
 import lightly
 from lightly.models import utils
 from lightly.models.modules import heads
+from transformers import AutoModel, AutoConfig
 
 
 class LightlySSLModel(nn.Module):
