@@ -47,7 +47,7 @@ class HuggingFaceDataModule:
     def _create_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
         transforms = [
-            Resize(self.image_size),
+            Resize((self.image_size, self.image_size)),
             Normalize.from_stats(*imagenet_stats),
         ]
 
