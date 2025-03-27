@@ -120,13 +120,6 @@ class HuggingFaceDataModule:
 
         transform_list.append(ShapePrinter("after_normalize"))
 
-        print("-" * 50)
-        for t in transform_list:
-
-            print(t)
-            print()
-        print("-" * 50)
-
         return transform_list
 
     def _create_eval_transforms(self):
@@ -162,6 +155,9 @@ class HuggingFaceDataModule:
         """Convert HuggingFace dataset to FastAI DataLoaders"""
 
         class_names = dataset.features["label"].names
+
+        print(self.train_transform)
+        exit()
 
         dblock = DataBlock(
             blocks=(ImageBlock, CategoryBlock),
