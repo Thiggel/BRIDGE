@@ -159,9 +159,7 @@ class BRIDGETrainer:
 
         # Train for specified number of epochs
         with learner.distrib_ctx():
-            print(num_epochs, type(num_epochs))
-            exit()
-            learner.fit(num_epochs, lr=self.cfg.model.optimizer.lr)
+            learner.fit(int(num_epochs), lr=self.cfg.model.optimizer.lr)
 
         # Save model
         learner.save(f"cycle_{cycle_idx}_final")
