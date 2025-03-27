@@ -119,6 +119,9 @@ class HuggingFaceDataModule:
 
         transform_list.append(DebugShape("after_normalize"))
 
+        print(transform_list)
+        exit()
+
         return transform_list
 
     def _create_eval_transforms(self):
