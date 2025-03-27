@@ -153,14 +153,10 @@ class HuggingFaceDataModule:
     def _create_dataloaders(self, dataset, is_train=True):
         """Convert HuggingFace dataset to FastAI DataLoaders"""
 
-        print(dataset[0])
-        exit()
-
         dblock = DataBlock(
             blocks=(ImageBlock, CategoryBlock),
-            get_x=lambda row: (255 * np.array(row["image"])).astype(np.uint8),
+            get_x=lambda row: row["image"],
             get_y=lambda row: row["label"],
-            item_tfms=[PILImage.create],
             splitter=RandomSplitter(valid_pct=self.val_pct),
             batch_tfms=self.train_transform if is_train else self.eval_transform,
         )
