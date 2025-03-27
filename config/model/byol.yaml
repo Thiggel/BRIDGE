@@ -1,10 +1,9 @@
 name: byol
 
-model:
-  backbone: "resnet50"
-  pretrained: False
-  projection_dim: 256
-  momentum_tau: 0.996
-  use_projector: True  # Whether to use a projector network
-  projector_hidden_dim: 4096  # Hidden dimension of projector network
-  predictor_hidden_dim: 4096  # Hidden dimension of predictor network
+backbone: "resnet50"
+pretrained: False
+projection_dim: 256
+momentum_tau: 0.996
+use_projector: True  # Whether to use a projector network
+projector_hidden_dim: 4096  # Hidden dimension of projector network
+predictor_hidden_dim: 4096  # Hidden dimension of predictor network

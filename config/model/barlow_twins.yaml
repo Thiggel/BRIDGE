@@ -1,7 +1,6 @@
 name: barlow_twins
 
-model:
-  backbone: "resnet50"
-  pretrained: False
-  projection_dim: 2048
-  lambda_param: 0.0051
+backbone: "resnet50"
+pretrained: False
+projection_dim: 2048
+lambda_param: 0.0051

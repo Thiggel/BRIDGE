@@ -1,7 +1,6 @@
 name: simclr
 
-model:
-  backbone: "resnet50"
-  pretrained: False
-  projection_dim: 128
-  temperature: 0.5
+backbone: "resnet50"
+pretrained: False
+projection_dim: 128
+temperature: 0.5

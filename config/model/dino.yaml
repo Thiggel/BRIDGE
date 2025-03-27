@@ -1,10 +1,9 @@
 name: dino
 
-model:
-  backbone: "vit_small"
-  pretrained: False
-  projection_dim: 256
-  use_momentum_encoder: True
-  momentum_tau: 0.996
-  use_bn_in_head: False
-  norm_last_layer: True
+backbone: "vit_small"
+pretrained: False
+projection_dim: 256
+use_momentum_encoder: True
+momentum_tau: 0.996
+use_bn_in_head: False
+norm_last_layer: True
