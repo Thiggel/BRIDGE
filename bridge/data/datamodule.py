@@ -57,7 +57,7 @@ class HuggingFaceDataModule:
         self.image_size = image_size
         self.augmentations = augmentations
         self.keep_in_memory = keep_in_memory
-        self.val_pct = val_pct
+        self.val_pct = val_pcts
 
         self.train_dataset = None
 
