@@ -67,6 +67,26 @@ class HuggingFaceDataModule:
 
         transform_list = []
 
+        class DebugShape(Transform):
+            def __init__(self, name=""):
+                super().__init__()
+                self.name = (
+                    name  # Optional label to identify where in the pipeline this is
+                )
+
+            def encodes(self, x):
+                if isinstance(x, TensorImage) or isinstance(x, torch.Tensor):
+                    print(f"Shape at {self.name}: {x.shape}")
+                elif isinstance(x, PILImage):
+                    print(f"Shape at {self.name} (PIL): {x.size}")
+                elif hasattr(x, "shape"):
+                    print(f"Shape at {self.name} (other): {x.shape}")
+                else:
+                    print(f"Object at {self.name} has no shape attribute: {type(x)}")
+                return x
+
+        transform_list.append(DebugShape("before_resize"))
+
         for aug in augmentation_config:
             if "rrc" in aug:
                 config = aug["rrc"]
@@ -77,6 +97,7 @@ class HuggingFaceDataModule:
                         max_scale=config.get("max_scale", 1.0),
                     )
                 )
+                transform_list.append(DebugShape("after_rrc"))
             elif "color_jitter" in aug:
                 config = aug["color_jitter"]
                 transform_list.extend(
@@ -95,13 +116,9 @@ class HuggingFaceDataModule:
                 config = aug["random_horizontal_flip"]
                 transform_list.append(FlipItem(p=config.get("prob", 0.5)))
 
-        return [
-            RandomResizedCrop(
-                size=(self.image_size, self.image_size), min_scale=0.08, max_scale=1.0
-            ),
-        ]
-
         transform_list.append(Normalize.from_stats(*imagenet_stats))
+
+        transform_list.append(DebugShape("after_normalize"))
 
         return transform_list
 
