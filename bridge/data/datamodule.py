@@ -44,7 +44,7 @@ class HuggingFaceDataModule:
         num_workers: int = 4,
         pin_memory: bool = True,
         image_size: int = 224,
-        augmentations: Optional[Dict[str, Any]] = None,
+        transform: Callable = None,
         keep_in_memory: bool = False,
         val_pct: float = 0.1,  # Percentage of train data to use for validation if no val split exists
     ):
@@ -59,6 +59,7 @@ class HuggingFaceDataModule:
         self.augmentations = augmentations
         self.keep_in_memory = keep_in_memory
         self.val_pct = val_pct
+        self.transform = transform
 
         self.train_dataset = None
 
@@ -102,6 +103,7 @@ class HuggingFaceDataModule:
             get_y=lambda row: class_names[row["label"]],
             splitter=RandomSplitter(valid_pct=self.val_pct),
             item_tfms=self_create_transforms(),
+            batch_tfms=self.transform,
         )
 
         return dblock.dataloaders(
