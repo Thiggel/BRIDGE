@@ -60,7 +60,7 @@ class HuggingFaceDataModule:
                 do_flip=True,  # Enables RandomHorizontalFlip
                 pad_mode=PadMode.Zeros,
                 p_lighting=0.75,  # Probability for brightness & contrast
-            ) + [Normalize.from_stats(*imagenet_stats)]
+            ) + [RandomGrayscale(p=0.2), Normalize.from_stats(*imagenet_stats)]
 
         transform_list = []
 
@@ -85,11 +85,7 @@ class HuggingFaceDataModule:
                 )
             elif "random_gray_scale" in aug:
                 config = aug["random_gray_scale"]
-                transform_list.append(
-                    rand_pad(
-                        0, p=config.get("prob", 0.2)
-                    )  # No direct grayscale, but simulates it
-                )
+                transform_list.append(RandomGrayscale(p=config.get("prob", 0.1)))
             elif "random_horizontal_flip" in aug:
                 config = aug["random_horizontal_flip"]
                 transform_list.append(flip_lr(p=config.get("prob", 0.5)))
