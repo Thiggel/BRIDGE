@@ -79,7 +79,10 @@ class HuggingFaceDataModule:
                 config = aug["rrc"]
                 transform_list.append(
                     RandomResizedCropGPU(
-                        size=config.get("crop_size", self.image_size),
+                        size=(
+                            config.get("crop_size", self.image_size),
+                            config.get("crop_size", self.image_size),
+                        ),
                         min_scale=config.get("min_scale", 0.08),
                         max_scale=config.get("max_scale", 1.0),
                     )
