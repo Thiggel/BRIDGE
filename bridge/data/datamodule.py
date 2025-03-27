@@ -95,6 +95,12 @@ class HuggingFaceDataModule:
                 config = aug["random_horizontal_flip"]
                 transform_list.append(FlipItem(p=config.get("prob", 0.5)))
 
+        return [
+            RandomResizedCrop(
+                size=(self.image_size, self.image_size), min_scale=0.08, max_scale=1.0
+            ),
+        ]
+
         transform_list.append(Normalize.from_stats(*imagenet_stats))
 
         return transform_list
