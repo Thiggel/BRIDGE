@@ -57,7 +57,7 @@ class LightlySSLModel(nn.Module):
         elif hasattr(config, "num_channels"):
             # For ResNet-like models from HF
             # This would need a pooling layer typically
-            num_ftrs = config.num_channels[-1]  # Last channels count
+            num_ftrs = config.num_channels  # Last channels count
         else:
             raise ValueError(
                 f"Could not determine feature dimension for model {backbone}"
