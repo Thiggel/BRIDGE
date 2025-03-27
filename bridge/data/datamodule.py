@@ -130,17 +130,25 @@ class HuggingFaceDataModule:
 
     def _create_eval_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
+        normalize_config = (
+            self.augmentations[self.augmentations.index("normalize")]
+            if "augmentations" in self.augmentations
+            else None
+        )
+
         return [
             transforms.Resize(self.image_size),
             Resize(self.image_size),
             transforms.ToTensor(),
             transforms.Normalize(
-                mean=self.augmentations.get("normalize", {}).get(
-                    "mean", [0.485, 0.456, 0.406]
-                ),
-                std=self.augmentations.get("normalize", {}).get(
-                    "std", [0.229, 0.224, 0.225]
-                ),
+                **(
+                    normalize_config
+                    if normalize_config
+                    else {
+                        "mean": [0.485, 0.456, 0.406],
+                        "std": [0.229, 0.224, 0.225],
+                    }
+                )
             ),
         ]
 
