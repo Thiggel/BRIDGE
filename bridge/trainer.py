@@ -9,6 +9,7 @@ from pathlib import Path
 import wandb
 from omegaconf import OmegaConf, DictConfig
 from fastai.vision.all import *
+from fastai.distributed import *
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.mixture import GaussianMixture
@@ -66,7 +67,7 @@ class BRIDGETrainer:
             train_split=self.cfg.dataset.split.train,
             val_split=self.cfg.dataset.split.val,
             test_split=self.cfg.dataset.split.test,
-            batch_size=self.cfg.optimizer.batch_size,
+            batch_size=self.cfg.model.optimizer.batch_size,
             num_workers=self.cfg.dataset.num_workers,
             pin_memory=self.cfg.dataset.pin_memory,
             image_size=self.cfg.dataset.image_size,
@@ -117,6 +118,22 @@ class BRIDGETrainer:
         if self.cfg.use_wandb:
             callbacks.append(WandbCallback())
 
+        if self.cfg.model.get("scheduler", None) is not None:
+            warmup_pct = warmup_epochs / total_epochs
+
+            pct = [warmup_pct]
+            schedulers = [SchedLin(0, lr_max)]
+
+            if self.cfg.model.scheduler.get("policy", None) == "cosine":
+                pct.append(1 - warmup_pct)
+                schedulers.append(SchedCos(lr_max, 0))
+
+            # Define the learning rate schedule
+            scheds = {"lr": combine_scheds(pct, schedulers)}
+
+            # Add learning rate scheduler
+            callbacks.append(ParamScheduler(scheds))
+
         return callbacks
 
     def train_cycle(
@@ -137,7 +154,8 @@ class BRIDGETrainer:
         )
 
         # Train for specified number of epochs
-        learner.fit(num_epochs, lr=self.cfg.optimizer.lr)
+        with learner.distrib_ctx():
+            learner.fit(num_epochs, lr=self.cfg.model.optimizer.lr)
 
         # Save model
         learner.save(f"cycle_{cycle_idx}_final")
@@ -153,7 +171,7 @@ class BRIDGETrainer:
             feature_extractor=self.model,
             num_clusters=self.cfg.bridge.num_clusters,
             num_ood_samples_per_cluster=self.cfg.bridge.num_ood_samples_per_cluster,
-            batch_size=self.cfg.optimizer.batch_size,
+            batch_size=self.cfg.model.optimizer.batch_size,
             num_workers=self.cfg.dataset.num_workers,
             experiment_name=self.name,
             cycle_idx=cycle_idx,
@@ -197,7 +215,7 @@ class BRIDGETrainer:
         augmentor = DatasetAugmentor(
             num_generations_per_sample=self.cfg.bridge.num_generations_per_ood_sample,
             diffusion_model=self.cfg.bridge.diffusion_model,
-            batch_size=self.cfg.optimizer.batch_size,
+            batch_size=self.cfg.model.optimizer.batch_size,
             num_workers=self.cfg.dataset.num_workers,
             experiment_name=self.name,
             cycle_idx=cycle_idx,
@@ -368,7 +386,7 @@ class BRIDGETrainer:
         """Extract features from a dataset using the current model"""
         loader = DataLoader(
             dataset,
-            batch_size=self.cfg.optimizer.batch_size,
+            batch_size=self.cfg.model.optimizer.batch_size,
             shuffle=False,
             num_workers=self.cfg.dataset.num_workers,
         )
