@@ -100,7 +100,6 @@ class BRIDGETrainer:
             SaveModelCallback(
                 monitor="valid_loss",
                 fname=f"{self.name}_best",
-                path=Path(self.output_dir),
                 with_opt=True,
             )
         )
@@ -151,6 +150,7 @@ class BRIDGETrainer:
             path=Path(self.output_dir),
             model_dir=f"cycle_{cycle_idx}",
             cbs=self.callbacks,
+            path=Path(os.environ.get("BASE_CACHE_DIR", "/tmp")),
         )
 
         # Train for specified number of epochs

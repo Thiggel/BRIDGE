@@ -7,6 +7,7 @@ import torch
 import numpy as np
 import random
 from pathlib import Path
+from dotenv import load_dotenv
 
 from bridge.trainer import BRIDGETrainer
 
@@ -25,6 +26,8 @@ def set_seed(seed: int):
 @hydra.main(config_path="config", config_name="config")
 def main(cfg: DictConfig):
     """Main entry point for the application"""
+    load_dotenv()
+
     # Print current config
     print(OmegaConf.to_yaml(cfg, resolve=True))
 
