@@ -166,6 +166,7 @@ class SimCLR(LightlySSLModel):
         self.temperature = temperature
 
     def forward(self, x):
+        print("x.shape", x.shape)
         if self.training:
             # During training, return the full SimCLR model output
             return self.model(x)
