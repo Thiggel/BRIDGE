@@ -18,13 +18,13 @@ class DebugShape(Transform):
 
     def encodes(self, x):
         if isinstance(x, TensorImage) or isinstance(x, torch.Tensor):
-            print(f"Shape at {self.name}: {x.shape}")
+            print(f"Shape at {self.label}: {x.shape}")
         elif isinstance(x, PILImage):
-            print(f"Shape at {self.name} (PIL): {x.size}")
+            print(f"Shape at {self.label} (PIL): {x.size}")
         elif hasattr(x, "shape"):
-            print(f"Shape at {self.name} (other): {x.shape}")
+            print(f"Shape at {self.label} (other): {x.shape}")
         else:
-            print(f"Object at {self.name} has no shape attribute: {type(x)}")
+            print(f"Object at {self.label} has no shape attribute: {type(x)}")
         return x
 
 
