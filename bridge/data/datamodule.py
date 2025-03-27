@@ -115,7 +115,7 @@ class HuggingFaceDataModule:
         )
 
         return [
-            Resize(self.image_size, self.image_size),
+            Resize(self.image_size, self.image_size, method=ResizeMethod.Squish),
             Normalize.from_stats(
                 *(normalize_config if normalize_config else imagenet_stats)
             ),
