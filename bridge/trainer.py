@@ -140,7 +140,9 @@ class BRIDGETrainer:
         self, cycle_idx: int, num_epochs: int, ckpt_path: Optional[str] = None
     ):
         """Train for one cycle"""
-        print(f"Starting training cycle {cycle_idx + 1}/{self.cfg.bridge.num_cycles}")
+        print(
+            f"Starting training cycle {cycle_idx + 1}/{self.cfg.experiment.bridge.num_cycles}"
+        )
 
         # Create trainer for this cycle
         learner = Learner(
@@ -171,8 +173,8 @@ class BRIDGETrainer:
         # Create OOD detector
         ood_detector = OODDetector(
             feature_extractor=self.model,
-            num_clusters=self.cfg.bridge.num_clusters,
-            num_ood_samples_per_cluster=self.cfg.bridge.num_ood_samples_per_cluster,
+            num_clusters=self.cfg.experiment.bridge.num_clusters,
+            num_ood_samples_per_cluster=self.cfg.experiment.bridge.num_ood_samples_per_cluster,
             batch_size=self.cfg.model.optimizer.batch_size,
             num_workers=self.cfg.dataset.num_workers,
             experiment_name=self.name,
@@ -181,7 +183,7 @@ class BRIDGETrainer:
         )
 
         # Get OOD samples
-        if self.cfg.bridge.use_ood_augmentation:
+        if self.cfg.experiment.bridge.use_ood_augmentation:
             # Get actual OOD samples along with cluster assignments and dataset
             ood_indices, ood_features, ood_labels, cluster_assignments, dataset = (
                 ood_detector.get_ood_datapoints(self.data_module.train_dataset)
@@ -190,8 +192,8 @@ class BRIDGETrainer:
             # For ablation: get random samples instead
             # Note: cluster_assignments will be None in this case
             total_samples = (
-                self.cfg.bridge.num_clusters
-                * self.cfg.bridge.num_ood_samples_per_cluster
+                self.cfg.experiment.bridge.num_clusters
+                * self.cfg.experiment.bridge.num_ood_samples_per_cluster
             )
             ood_indices, ood_features, ood_labels = ood_detector.get_random_samples(
                 self.data_module.train_dataset, total_samples
@@ -215,8 +217,8 @@ class BRIDGETrainer:
 
         # Create dataset augmentor
         augmentor = DatasetAugmentor(
-            num_generations_per_sample=self.cfg.bridge.num_generations_per_ood_sample,
-            diffusion_model=self.cfg.bridge.diffusion_model,
+            num_generations_per_sample=self.cfg.experiment.bridge.num_generations_per_ood_sample,
+            diffusion_model=self.cfg.experiment.bridge.diffusion_model,
             batch_size=self.cfg.model.optimizer.batch_size,
             num_workers=self.cfg.dataset.num_workers,
             experiment_name=self.name,
@@ -227,8 +229,8 @@ class BRIDGETrainer:
 
         # Augment dataset
         if (
-            hasattr(self.cfg.bridge, "use_removed_data")
-            and self.cfg.bridge.use_removed_data
+            hasattr(self.cfg.experiment.bridge, "use_removed_data")
+            and self.cfg.experiment.bridge.use_removed_data
         ):
             # Ablation: use removed data instead of generating new samples
             new_dataset_path = augmentor.add_removed_data(
@@ -272,7 +274,7 @@ class BRIDGETrainer:
 
         # Cluster the features
         gmm = GaussianMixture(
-            n_components=self.cfg.bridge.num_clusters, random_state=42
+            n_components=self.cfg.experiment.bridge.num_clusters, random_state=42
         )
         features_norm = F.normalize(features, dim=1)
         cluster_assignments = gmm.fit_predict(features_norm.numpy())
@@ -460,12 +462,12 @@ class BRIDGETrainer:
     def train(self):
         """Run the full BRIDGE training process"""
         # Calculate epochs per cycle
-        num_epochs_per_cycle = self.cfg.bridge.num_epochs_per_cycle
+        num_epochs_per_cycle = self.cfg.experiment.bridge.num_epochs_per_cycle
 
         # Train for each cycle
-        for cycle_idx in range(self.cfg.bridge.num_cycles):
+        for cycle_idx in range(self.cfg.experiment.bridge.num_cycles):
             print(
-                f"\n============ Starting Cycle {cycle_idx + 1}/{self.cfg.bridge.num_cycles} ============\n"
+                f"\n============ Starting Cycle {cycle_idx + 1}/{self.cfg.experiment.bridge.num_cycles} ============\n"
             )
 
             # Train for this cycle
@@ -478,7 +480,7 @@ class BRIDGETrainer:
             self.visualize_cycle_results(cycle_idx)
 
             # Skip OOD detection and augmentation for the last cycle
-            if cycle_idx < self.cfg.bridge.num_cycles - 1:
+            if cycle_idx < self.cfg.experiment.bridge.num_cycles - 1:
                 # Run OOD detection and get cluster assignments
                 ood_indices, ood_features, ood_labels, cluster_assignments, dataset = (
                     self.run_ood_detection(cycle_idx)
