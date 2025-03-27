@@ -34,11 +34,60 @@ class LightlySSLModel(nn.Module):
             self.num_ftrs = num_ftrs
 
     def _create_backbone(
-        self, backbone: str, pretrained: bool = False
+        self, backbone: str, pretrained: bool = True
     ) -> Tuple[nn.Module, int]:
-        """Create the backbone and return it with the number of features"""
-        backbone_model, num_ftrs = utils.get_backbone(backbone, pretrained=pretrained)
-        return backbone_model, num_ftrs
+        """Create the backbone using HuggingFace transformers and return it with the number of features"""
+        # Load pre-trained model if pretrained=True, otherwise initialize with random weights
+        config = AutoConfig.from_pretrained(backbone)
+
+        if pretrained:
+            model = AutoModel.from_pretrained(backbone)
+        else:
+            model = AutoModel.from_config(config)
+
+        # Get the number of features from the model's configuration
+        # Different model architectures store this information differently
+        if hasattr(config, "hidden_size"):
+            # For BERT, ViT, etc.
+            num_ftrs = config.hidden_size
+        elif hasattr(config, "hidden_dim"):
+            # Some vision models
+            num_ftrs = config.hidden_dim
+        elif hasattr(config, "num_channels"):
+            # For ResNet-like models from HF
+            # This would need a pooling layer typically
+            num_ftrs = config.num_channels[-1]  # Last channels count
+        else:
+            raise ValueError(
+                f"Could not determine feature dimension for model {backbone}"
+            )
+
+        # For vision models, we need a feature extractor
+        # Modify the model to return the features before the classification head
+        if "resnet" in backbone.lower() or "vit" in backbone.lower():
+            # Create a wrapper module for vision models
+            class FeatureExtractor(nn.Module):
+                def __init__(self, model):
+                    super().__init__()
+                    self.model = model
+
+                def forward(self, x):
+                    outputs = self.model(x, output_hidden_states=True)
+                    if hasattr(outputs, "pooler_output"):
+                        return outputs.pooler_output
+                    elif hasattr(outputs, "last_hidden_state"):
+                        # For ViT, use cls token
+                        return outputs.last_hidden_state[:, 0]
+                    else:
+                        # For ResNet, use the final feature map (needs pooling)
+                        features = outputs.hidden_states[-1]
+                        return torch.mean(
+                            features, dim=[2, 3]
+                        )  # Global average pooling
+
+            model = FeatureExtractor(model)
+
+        return model, num_ftrs
 
     def forward(self, x):
         """Extract features from the backbone"""
