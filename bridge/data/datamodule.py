@@ -56,7 +56,6 @@ class HuggingFaceDataModule:
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.image_size = image_size
-        self.augmentations = augmentations
         self.keep_in_memory = keep_in_memory
         self.val_pct = val_pct
         self.transform = transform
@@ -65,17 +64,9 @@ class HuggingFaceDataModule:
 
     def _create_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
-        normalize_config = (
-            self.augmentations[self.augmentations.index("normalize")]
-            if "augmentations" in self.augmentations
-            else None
-        )
-
         return [
             Resize(self.image_size),
-            Normalize.from_stats(
-                *(normalize_config if normalize_config else imagenet_stats)
-            ),
+            Normalize.from_stats(*imagenet_stats),
         ]
 
     def setup(self):
