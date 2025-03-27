@@ -167,7 +167,19 @@ class BRIDGETrainer:
 
         # Train for specified number of epochs
         with learner.distrib_ctx():
-            print(num_epochs)
+            print(f"Inside context: {next(learn.model.parameters()).device}")
+
+            def device_debug_hook(m, i, o):
+                print(
+                    f"Input devices: {[x.device if isinstance(x, torch.Tensor) else 'non-tensor' for x in i]}"
+                )
+                print(
+                    f"Output device: {o.device if isinstance(o, torch.Tensor) else 'non-tensor'}"
+                )
+
+            # Register the hook on specific layers
+            learn.model[0].register_forward_hook(device_debug_hook)
+
             learner.fit(num_epochs, lr=self.cfg.model.optimizer.lr)
 
         # Save model
