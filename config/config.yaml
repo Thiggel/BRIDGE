@@ -1,12 +1,12 @@
 defaults:
   - model: dino
   - dataset: imagenet100_lt
-    - experiment: bridge
-    - _self_
+  - experiment: bridge
+  - _self_
 
-  # General settings
-  seed: 42
-  name: ${experiment.name}_${model.name}_${dataset.name}
+# General settings
+seed: 42
+name: ${experiment.name}_${model.name}_${dataset.name}
 base_dir: ${oc.env:BASE_CACHE_DIR,/tmp}/bridge_experiments
 use_wandb: True
 
