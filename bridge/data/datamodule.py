@@ -119,7 +119,12 @@ class HuggingFaceDataModule:
 
         transform_list.append(DebugShape("after_normalize"))
 
-        print(transform_list)
+        print("-" * 50)
+        for t in transform_list:
+
+            print(t)
+            print()
+        print("-" * 50)
         exit()
 
         return transform_list
