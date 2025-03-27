@@ -11,21 +11,22 @@ from fastai.vision.all import *
 from datasets import load_dataset, Dataset, concatenate_datasets
 
 
-class DebugShape(Transform):
-    def __init__(self, label=""):
+class ShapePrinter(Transform):
+    def __init__(self, position=""):
+        self.position = position
         super().__init__()
-        self.label = label  # Optional label to identify where in the pipeline this is
 
     def encodes(self, x):
-        if isinstance(x, TensorImage) or isinstance(x, torch.Tensor):
-            print(f"Shape at {self.label}: {x.shape}")
-        elif isinstance(x, PILImage):
-            print(f"Shape at {self.label} (PIL): {x.size}")
-        elif hasattr(x, "shape"):
-            print(f"Shape at {self.label} (other): {x.shape}")
-        else:
-            print(f"Object at {self.label} has no shape attribute: {type(x)}")
+        # Only print for actual tensors or images
+        if isinstance(x, (torch.Tensor, TensorImage, PILImage)):
+            if isinstance(x, (torch.Tensor, TensorImage)):
+                print(f"Shape at {self.position}: {x.shape}")
+            else:
+                print(f"PIL Image at {self.position}: {x.size}")
         return x
+
+    def __repr__(self):
+        return f"ShapePrinter({self.position})"
 
 
 class HuggingFaceDataModule:
@@ -84,7 +85,7 @@ class HuggingFaceDataModule:
 
         transform_list = []
 
-        transform_list.append(DebugShape("before_resize"))
+        transform_list.append(ShapePrinter("before_resize"))
 
         for aug in augmentation_config:
             if "rrc" in aug:
@@ -96,7 +97,7 @@ class HuggingFaceDataModule:
                         max_scale=config.get("max_scale", 1.0),
                     )
                 )
-                transform_list.append(DebugShape("after_rrc"))
+                transform_list.append(ShapePrinter("after_rrc"))
             elif "color_jitter" in aug:
                 config = aug["color_jitter"]
                 transform_list.extend(
@@ -117,7 +118,7 @@ class HuggingFaceDataModule:
 
         transform_list.append(Normalize.from_stats(*imagenet_stats))
 
-        transform_list.append(DebugShape("after_normalize"))
+        transform_list.append(ShapePrinter("after_normalize"))
 
         print("-" * 50)
         for t in transform_list:
