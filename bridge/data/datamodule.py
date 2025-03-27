@@ -153,6 +153,9 @@ class HuggingFaceDataModule:
     def _create_dataloaders(self, dataset, is_train=True):
         """Convert HuggingFace dataset to FastAI DataLoaders"""
 
+        print(dataset[0])
+        exit()
+
         dblock = DataBlock(
             blocks=(ImageBlock, CategoryBlock),
             get_x=lambda row: (255 * np.array(row["image"])).astype(np.uint8),
