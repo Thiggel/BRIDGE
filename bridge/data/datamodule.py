@@ -62,14 +62,17 @@ class HuggingFaceDataModule:
                 p_lighting=0.75,  # Probability for brightness & contrast
             ) + [Contrast(max_lighting=0, p=0.2), Normalize.from_stats(*imagenet_stats)]
 
-        transform_list = [Resize(self.image_size)]
+        transform_list = []
 
         for aug in augmentation_config:
             if "rrc" in aug:
                 config = aug["rrc"]
                 transform_list.append(
                     RandomResizedCropGPU(
-                        size=config.get("crop_size", self.image_size),
+                        size=(
+                            config.get("crop_size", self.image_size),
+                            config.get("crop_size", self.image_size),
+                        ),
                         min_scale=config.get("min_scale", 0.08),
                         max_scale=config.get("max_scale", 1.0),
                     )
