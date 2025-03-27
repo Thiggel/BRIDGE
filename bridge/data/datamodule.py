@@ -49,9 +49,7 @@ class HuggingFaceDataModule:
 
     def _create_ssl_transforms(self, augmentation_config):
         """Create SSL-specific transforms using FastAI"""
-        base_transforms = [
-            Resize(self.image_size, self.image_size, method=ResizeMethod.Squish)
-        ]
+        base_transforms = [Resize(self.image_size, method=ResizeMethod.Squish)]
         if not augmentation_config:
             return (
                 base_transforms
@@ -115,7 +113,7 @@ class HuggingFaceDataModule:
         )
 
         return [
-            Resize(self.image_size, self.image_size, method=ResizeMethod.Squish),
+            Resize(self.image_size, method=ResizeMethod.Squish),
             Normalize.from_stats(
                 *(normalize_config if normalize_config else imagenet_stats)
             ),
