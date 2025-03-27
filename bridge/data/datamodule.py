@@ -68,13 +68,13 @@ class HuggingFaceDataModule:
         for aug in augmentation_config:
             if "rrc" in aug:
                 config = aug["rrc"]
-                transform_list.append(
-                    RandomResizedCropGPU(
-                        size=config.get("crop_size", self.image_size),
-                        min_scale=config.get("min_scale", 0.08),
-                        max_scale=config.get("max_scale", 1.0),
-                    )
-                )
+                # transform_list.append(
+                #    RandomResizedCropGPU(
+                #        size=config.get("crop_size", self.image_size),
+                #        min_scale=config.get("min_scale", 0.08),
+                #        max_scale=config.get("max_scale", 1.0),
+                #    )
+                # )
             elif "color_jitter" in aug:
                 config = aug["color_jitter"]
                 # transform_list.extend(
@@ -95,7 +95,7 @@ class HuggingFaceDataModule:
 
         transform_list.append(Normalize.from_stats(*imagenet_stats))
 
-        return Pipeline(transform_list)
+        return Pipeline(Normalize.from_stats(*imagenet_stats))
 
     def _create_eval_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
