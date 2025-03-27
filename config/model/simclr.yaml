@@ -1,6 +1,6 @@
 name: simclr
 
-backbone: "resnet50"
+backbone: "microsoft/resnet-50net50"
 pretrained: False
 projection_dim: 128
 temperature: 0.5
