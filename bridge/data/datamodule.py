@@ -77,13 +77,13 @@ class HuggingFaceDataModule:
                 )
             elif "color_jitter" in aug:
                 config = aug["color_jitter"]
-                transform_list.extend(
-                    aug_transforms(
-                        max_lighting=config.get("brightness", 0.4),
-                        p_lighting=0.75,
-                        size=self.image_size,
-                    )
-                )
+                # transform_list.extend(
+                #    aug_transforms(
+                #        max_lighting=config.get("brightness", 0.4),
+                #        p_lighting=0.75,
+                #        size=self.image_size,
+                #    )
+                # )
             elif "random_gray_scale" in aug:
                 config = aug["random_gray_scale"]
                 transform_list.append(
