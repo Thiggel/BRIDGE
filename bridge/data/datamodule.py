@@ -11,6 +11,23 @@ from fastai.vision.all import *
 from datasets import load_dataset, Dataset, concatenate_datasets
 
 
+class DebugShape(Transform):
+    def __init__(self, name=""):
+        super().__init__()
+        self.name = name  # Optional label to identify where in the pipeline this is
+
+    def encodes(self, x):
+        if isinstance(x, TensorImage) or isinstance(x, torch.Tensor):
+            print(f"Shape at {self.name}: {x.shape}")
+        elif isinstance(x, PILImage):
+            print(f"Shape at {self.name} (PIL): {x.size}")
+        elif hasattr(x, "shape"):
+            print(f"Shape at {self.name} (other): {x.shape}")
+        else:
+            print(f"Object at {self.name} has no shape attribute: {type(x)}")
+        return x
+
+
 class HuggingFaceDataModule:
     """Data module for HuggingFace datasets with FastAI integration"""
 
@@ -66,24 +83,6 @@ class HuggingFaceDataModule:
             ]
 
         transform_list = []
-
-        class DebugShape(Transform):
-            def __init__(self, name=""):
-                super().__init__()
-                self.name = (
-                    name  # Optional label to identify where in the pipeline this is
-                )
-
-            def encodes(self, x):
-                if isinstance(x, TensorImage) or isinstance(x, torch.Tensor):
-                    print(f"Shape at {self.name}: {x.shape}")
-                elif isinstance(x, PILImage):
-                    print(f"Shape at {self.name} (PIL): {x.size}")
-                elif hasattr(x, "shape"):
-                    print(f"Shape at {self.name} (other): {x.shape}")
-                else:
-                    print(f"Object at {self.name} has no shape attribute: {type(x)}")
-                return x
 
         transform_list.append(DebugShape("before_resize"))
 
