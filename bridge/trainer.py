@@ -91,7 +91,7 @@ class BRIDGETrainer:
                     input_size=input_size, gaussian_blur=0.0
                 ),
             ),
-        }[ssl_method]()
+        }[ssl_method](input_size)
 
     def create_data_module(self):
         """Create data module for training"""
