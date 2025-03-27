@@ -67,6 +67,7 @@ class HuggingFaceDataModule:
         return [
             Resize(self.image_size),
             Normalize.from_stats(*imagenet_stats),
+            self.transform,
         ]
 
     def setup(self):
@@ -94,7 +95,6 @@ class HuggingFaceDataModule:
             get_y=lambda row: class_names[row["label"]],
             splitter=RandomSplitter(valid_pct=self.val_pct),
             item_tfms=self._create_transforms(),
-            batch_tfms=self.transform,
         )
 
         return dblock.dataloaders(
