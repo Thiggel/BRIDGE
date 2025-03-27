@@ -17,6 +17,8 @@ class LightlySSLModel(nn.Module):
         projection_dim: int = 256,
         num_ftrs: Optional[int] = None,
         pretrained: bool = False,
+        *args,
+        **kwargs,
     ):
         super().__init__()
 
@@ -59,6 +61,8 @@ class DINO(LightlySSLModel):
         momentum_tau: float = 0.996,
         use_bn_in_head: bool = False,
         norm_last_layer: bool = True,
+        *args,
+        **kwargs,
     ):
         super().__init__(backbone, projection_dim, pretrained=pretrained)
 
@@ -96,6 +100,8 @@ class SimCLR(LightlySSLModel):
         projection_dim: int = 128,
         pretrained: bool = False,
         temperature: float = 0.5,
+        *args,
+        **kwargs,
     ):
         super().__init__(backbone, projection_dim, pretrained=pretrained)
 
@@ -131,6 +137,8 @@ class BarlowTwins(LightlySSLModel):
         projection_dim: int = 2048,
         pretrained: bool = False,
         lambda_param: float = 0.0051,
+        *args,
+        **kwargs,
     ):
         super().__init__(backbone, projection_dim, pretrained=pretrained)
 
@@ -166,6 +174,8 @@ class BYOL(LightlySSLModel):
         projection_dim: int = 128,
         pretrained: bool = False,
         momentum_tau: float = 0.996,
+        *args,
+        **kwargs,
     ):
         super().__init__(backbone, projection_dim, pretrained=pretrained)
 
@@ -202,6 +212,8 @@ class MoCo(LightlySSLModel):
         temperature: float = 0.1,
         queue_size: int = 65536,
         use_momentum_encoder: bool = True,
+        *args,
+        **kwargs,
     ):
         super().__init__(backbone, projection_dim, pretrained=pretrained)
 
@@ -244,6 +256,8 @@ class MoCoV3(LightlySSLModel):
         use_predictor: bool = True,
         use_queue: bool = False,
         queue_size: int = 0,
+        *args,
+        **kwargs,
     ):
         super().__init__(backbone, projection_dim, pretrained=pretrained)
 
