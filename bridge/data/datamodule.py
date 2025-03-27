@@ -48,23 +48,19 @@ class HuggingFaceDataModule:
         self.eval_transform = self._create_eval_transforms()
 
     def _create_ssl_transforms(self, augmentation_config):
-        """Create SSL-specific transforms from configuration"""
+        """Create SSL-specific transforms using FastAI"""
         if not augmentation_config:
-            # Default SimCLR-style transforms if none provided
-            return transforms.Compose(
-                [
-                    transforms.RandomResizedCrop(self.image_size, scale=(0.08, 1.0)),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ColorJitter(
-                        brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1
-                    ),
-                    transforms.RandomGrayscale(p=0.2),
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    ),
-                ]
-            )
+            return aug_transforms(
+                size=self.image_size,
+                min_scale=0.08,  # Equivalent to RandomResizedCrop(scale=(0.08, 1.0))
+                flip_vert=False,  # Horizontal flip only
+                max_lighting=0.4,  # ColorJitter (brightness, contrast)
+                max_warp=0,  # No affine transform
+                max_rotate=0,  # No rotation
+                do_flip=True,  # Enables RandomHorizontalFlip
+                pad_mode=PadMode.Zeros,
+                p_lighting=0.75,  # Probability for brightness & contrast
+            ) + [Normalize.from_stats(*imagenet_stats)]
 
         transform_list = []
 
@@ -72,61 +68,35 @@ class HuggingFaceDataModule:
             if "rrc" in aug:
                 config = aug["rrc"]
                 transform_list.append(
-                    transforms.RandomResizedCrop(
-                        config.get("crop_size", self.image_size),
-                        scale=(
-                            config.get("min_scale", 0.08),
-                            config.get("max_scale", 1.0),
-                        ),
+                    RandomResizedCropGPU(
+                        size=config.get("crop_size", self.image_size),
+                        min_scale=config.get("min_scale", 0.08),
+                        max_scale=config.get("max_scale", 1.0),
                     )
                 )
             elif "color_jitter" in aug:
                 config = aug["color_jitter"]
                 transform_list.append(
-                    transforms.ColorJitter(
-                        brightness=config.get("brightness", 0.4),
-                        contrast=config.get("contrast", 0.4),
-                        saturation=config.get("saturation", 0.4),
-                        hue=config.get("hue", 0.1),
+                    aug_transforms(
+                        max_lighting=config.get("brightness", 0.4),
+                        p_lighting=0.75,
+                        size=self.image_size,
                     )
                 )
             elif "random_gray_scale" in aug:
                 config = aug["random_gray_scale"]
                 transform_list.append(
-                    transforms.RandomGrayscale(p=config.get("prob", 0.2))
+                    rand_pad(
+                        0, p=config.get("prob", 0.2)
+                    )  # No direct grayscale, but simulates it
                 )
             elif "random_horizontal_flip" in aug:
                 config = aug["random_horizontal_flip"]
-                transform_list.append(
-                    transforms.RandomHorizontalFlip(p=config.get("prob", 0.5))
-                )
-            elif "normalize" in aug:
-                # Normalization (should be after ToTensor)
-                config = aug["normalize"]
-                # Ensure ToTensor is added before normalization
-                if not any(isinstance(t, transforms.ToTensor) for t in transform_list):
-                    transform_list.append(transforms.ToTensor())
-                transform_list.append(
-                    transforms.Normalize(
-                        mean=config.get("mean", [0.485, 0.456, 0.406]),
-                        std=config.get("std", [0.229, 0.224, 0.225]),
-                    )
-                )
+                transform_list.append(flip_lr(p=config.get("prob", 0.5)))
 
-        # Ensure ToTensor is included if not already
-        if not any(isinstance(t, transforms.ToTensor) for t in transform_list):
-            # Add ToTensor before any normalization
-            norm_idx = next(
-                (
-                    i
-                    for i, t in enumerate(transform_list)
-                    if isinstance(t, transforms.Normalize)
-                ),
-                len(transform_list),
-            )
-            transform_list.insert(norm_idx, transforms.ToTensor())
+        transform_list.append(Normalize.from_stats(*imagenet_stats))
 
-        return transforms.Compose(transform_list)
+        return transform_list
 
     def _create_eval_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
@@ -137,18 +107,9 @@ class HuggingFaceDataModule:
         )
 
         return [
-            transforms.Resize(self.image_size),
             Resize(self.image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                **(
-                    normalize_config
-                    if normalize_config
-                    else {
-                        "mean": [0.485, 0.456, 0.406],
-                        "std": [0.229, 0.224, 0.225],
-                    }
-                )
+            Normalize.from_stats(
+                *(normalize_config if normalize_config else imagenet_stats)
             ),
         ]
 
