@@ -62,68 +62,7 @@ class HuggingFaceDataModule:
 
         self.train_dataset = None
 
-        self.train_transform = self._create_ssl_transforms(self.augmentations)
-        self.eval_transform = self._create_eval_transforms()
-
-    def _create_ssl_transforms(self, augmentation_config):
-        """Create SSL-specific transforms using FastAI"""
-        if not augmentation_config:
-            return aug_transforms(
-                size=(self.image_size, self.image_size),
-                min_scale=0.08,  # Equivalent to RandomResizedCrop(scale=(0.08, 1.0))
-                flip_vert=False,  # Horizontal flip only
-                max_lighting=0.4,  # ColorJitter (brightness, contrast)
-                max_warp=0,  # No affine transform
-                max_rotate=0,  # No rotation
-                do_flip=True,  # Enables RandomHorizontalFlip
-                pad_mode=PadMode.Zeros,
-                p_lighting=0.75,  # Probability for brightness & contrast
-            ) + [
-                Contrast(max_lighting=0, p=0.2),
-                Normalize.from_stats(*imagenet_stats),
-            ]
-
-        transform_list = []
-
-        transform_list.append(ShapePrinter("before_resize"))
-
-        for aug in augmentation_config:
-            if "rrc" in aug:
-                config = aug["rrc"]
-                transform_list.append(
-                    RandomResizedCrop(
-                        size=config.get("crop_size", self.image_size),
-                        min_scale=config.get("min_scale", 0.08),
-                        max_scale=config.get("max_scale", 1.0),
-                    )
-                )
-                transform_list.append(ShapePrinter("after_rrc"))
-            elif "color_jitter" in aug:
-                config = aug["color_jitter"]
-                transform_list.extend(
-                    aug_transforms(
-                        max_lighting=config.get("brightness", 0.4),
-                        p_lighting=0.75,
-                        size=self.image_size,
-                    )
-                )
-            elif "random_gray_scale" in aug:
-                config = aug["random_gray_scale"]
-                transform_list.append(
-                    Contrast(max_lighting=0, p=config.get("prob", 0.1))
-                )
-            elif "random_horizontal_flip" in aug:
-                config = aug["random_horizontal_flip"]
-                transform_list.append(FlipItem(p=config.get("prob", 0.5)))
-
-        transform_list.append(Normalize.from_stats(*imagenet_stats))
-
-        transform_list.append(ShapePrinter("after_normalize"))
-        transform_list.append(ShapePrinter("after_normalize2"))
-
-        return transform_list
-
-    def _create_eval_transforms(self):
+    def _create_transforms(self):
         """Get evaluation transforms (resize and normalize only)"""
         normalize_config = (
             self.augmentations[self.augmentations.index("normalize")]
@@ -162,8 +101,7 @@ class HuggingFaceDataModule:
             get_x=lambda row: row["image"],
             get_y=lambda row: class_names[row["label"]],
             splitter=RandomSplitter(valid_pct=self.val_pct),
-            item_tfms=Resize(self.image_size),
-            batch_tfms=self.train_transform if is_train else self.eval_transform,
+            item_tfms=self_create_transforms(),
         )
 
         return dblock.dataloaders(

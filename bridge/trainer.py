@@ -17,6 +17,14 @@ from sklearn.mixture import GaussianMixture
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from lightly.transforms.simclr_transform import SimCLRTransform
+from lightly.transforms.moco_transform import MoCoV2Transform
+from lightly.transforms.dino_transform import DINOTransform
+from lightly.transforms.byol_transform import (
+    BYOLTransform,
+    BYOLView1Transform,
+    BYOLView2Transform,
+)
 
 from bridge.data.datamodule import HuggingFaceDataModule
 from bridge.detectors.ood_detector import OODDetector
@@ -61,6 +69,30 @@ class BRIDGETrainer:
                 config=OmegaConf.to_container(self.cfg, resolve=True),
             )
 
+    def get_transform(self, ssl_method: str, input_size: int):
+        return {
+            "simclr": lambda input_size: SimCLRTransform(),
+            "moco": lambda input_size: SimCLRTransformMoCoV2Transform(),
+            "mocov3": lambda input_size: MoCoV2Transform(),
+            "dino": lambda input_size: DINOTransform(),
+            "barlow_twins": lambda input_size: BYOLTransform(
+                view_1_transform=BYOLView1Transform(
+                    input_size=input_size, gaussian_blur=0.0
+                ),
+                view_2_transform=BYOLView2Transform(
+                    input_size=input_size, gaussian_blur=0.0
+                ),
+            ),
+            "byol": lambda input_size: BYOLTransform(
+                view_1_transform=BYOLView1Transform(
+                    input_size=input_size, gaussian_blur=0.0
+                ),
+                view_2_transform=BYOLView2Transform(
+                    input_size=input_size, gaussian_blur=0.0
+                ),
+            ),
+        }
+
     def create_data_module(self):
         """Create data module for training"""
         data_module = HuggingFaceDataModule(
@@ -73,7 +105,9 @@ class BRIDGETrainer:
             pin_memory=self.cfg.dataset.pin_memory,
             image_size=self.cfg.dataset.image_size,
             keep_in_memory=False,  # Ensure we don't load entire dataset in memory
-            augmentations=self.cfg.augmentations,
+            transform=self.get_transform(
+                self.cfg.model.name, self.cfg.dataset.image_size
+            ),
         )
         data_module.setup()
         return data_module
