@@ -93,7 +93,7 @@ class HuggingFaceDataModule:
             get_x=lambda row: row["image"],
             get_y=lambda row: class_names[row["label"]],
             splitter=RandomSplitter(valid_pct=self.val_pct),
-            item_tfms=self_create_transforms(),
+            item_tfms=self._create_transforms(),
             batch_tfms=self.transform,
         )
 
