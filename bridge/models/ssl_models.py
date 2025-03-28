@@ -211,8 +211,6 @@ class SimCLR(LightlySSLModel):
         self.transform = SimCLRTransform()
 
     def forward(self, x):
-        x = self.transform(x)
-
         if self.training:
             # During training, return the full SimCLR model output
             return self.model(*x)

@@ -43,11 +43,11 @@ class BRIDGETrainer:
         # Setup logging
         self.setup_logging()
 
-        # Create data module
-        self.data_module = self.create_data_module()
-
         # Create model
         self.model = self.create_model()
+
+        # Create data module
+        self.data_module = self.create_data_module()
 
         print(self.model)
 
@@ -75,6 +75,7 @@ class BRIDGETrainer:
             pin_memory=self.cfg.dataset.pin_memory,
             image_size=self.cfg.dataset.image_size,
             keep_in_memory=False,  # Ensure we don't load entire dataset in memory
+            transform=self.model.transform,
         )
         data_module.setup()
         return data_module

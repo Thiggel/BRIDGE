@@ -10,6 +10,16 @@ from torchvision import transforms
 from fastai.vision.all import *
 from datasets import load_dataset, Dataset, concatenate_datasets
 
+class ToRGB(Transform):
+    def encodes(self, img):
+        # If img is a tensor with 1 channel, repeat it to make 3 channels
+        if isinstance(img, TensorImage) and img.shape[0] == 1:
+            return img.repeat(3, 1, 1)
+        # If img is a PIL Image in L mode, convert to RGB
+        elif hasattr(img, 'mode') and img.mode == 'L':
+            return img.convert('RGB')
+        return img
+
 
 class HuggingFaceDataModule:
     """Data module for HuggingFace datasets with FastAI integration"""
@@ -48,10 +58,29 @@ class HuggingFaceDataModule:
         """Get evaluation transforms (resize and normalize only)"""
         transforms = [
             Resize((self.image_size, self.image_size)),
+            ToRGB(),
         ]
 
         if self.transform is not None:
-            transforms.append(self.transform)
+            class SSLTransformWrapper(Transform):
+                def __init__(self, transform):
+                    self.transform = transform
+                
+                def encodes(self, x):
+                    # Only apply to images, not to labels
+                    if isinstance(x, (PILImage, Image.Image, TensorImage)):
+
+                        try:
+                            x = self.transform(x)
+                        except Exception as e:
+                            print('Failed transform for: ', x.size, x.mode)
+
+                    
+                    return x  # Return labels unchanged
+            
+            ssl_transform = SSLTransformWrapper(self.transform)
+
+            transforms.append(ssl_transform)
 
         return transforms
 
