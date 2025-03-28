@@ -48,8 +48,6 @@ class HuggingFaceDataModule:
         """Get evaluation transforms (resize and normalize only)"""
         transforms = [
             Resize((self.image_size, self.image_size)),
-            ToTensor(),
-            Normalize.from_stats(*imagenet_stats),
         ]
 
         if self.transform is not None:
@@ -82,6 +80,7 @@ class HuggingFaceDataModule:
             get_y=lambda row: class_names[row["label"]],
             splitter=RandomSplitter(valid_pct=self.val_pct),
             item_tfms=self._create_transforms(),
+            batch_tfms=Normalize.from_stats(*imagenet_stats),
         )
 
         return dblock.dataloaders(
@@ -89,7 +88,6 @@ class HuggingFaceDataModule:
             bs=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            device=torch.device("cpu"),
         )
 
     def train_dataloader(self):

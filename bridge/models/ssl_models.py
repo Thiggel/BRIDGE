@@ -4,6 +4,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fastai.vision.all import *
 import lightly
+from lightly.loss import (
+    NTXentLoss,
+    NegativeCosineSimilarity,
+    DINOLoss,
+    BarlowTwinsLoss,
+)
 from lightly.models import utils
 from lightly.models.modules import heads
 from lightly.transforms.simclr_transform import SimCLRTransform
@@ -15,6 +21,15 @@ from lightly.transforms.byol_transform import (
     BYOLView2Transform,
 )
 from transformers import AutoModel, AutoConfig
+
+
+class AugLossWrapper(nn.Module):
+    def __init__(self, loss_fn: nn.Module):
+        super().__init__()
+        self.loss_fn = loss_fn
+
+    def forward(self, tup, *args, **kwargs):
+        return self.loss_fn(*tup)
 
 
 class LightlySSLModel(nn.Module):
@@ -34,7 +49,6 @@ class LightlySSLModel(nn.Module):
 
         self.backbone_name = backbone
         self.projection_dim = projection_dim
-        self.transform = transform
 
         # Create backbone
         self.backbone, self.num_ftrs = self._create_backbone(
@@ -67,7 +81,7 @@ class LightlySSLModel(nn.Module):
         elif hasattr(config, "num_channels"):
             # For ResNet-like models from HF
             # This would need a pooling layer typically
-            num_ftrs = config.num_channels  # Last channels count
+            num_ftrs = config.hidden_sizes[-1] # Last channels count
         else:
             raise ValueError(
                 f"Could not determine feature dimension for model {backbone}"
@@ -102,9 +116,6 @@ class LightlySSLModel(nn.Module):
 
     def forward(self, x):
         """Extract features from the backbone"""
-        if self.transform:
-            x = self.transform(x)
-
         return self.backbone(x)
 
     def get_features(self, x):
@@ -124,6 +135,7 @@ class DINO(LightlySSLModel):
         momentum_tau: float = 0.996,
         use_bn_in_head: bool = False,
         norm_last_layer: bool = True,
+        optimizer: dict = {},
         *args,
         **kwargs,
     ):
@@ -141,6 +153,15 @@ class DINO(LightlySSLModel):
             use_bn_in_head=use_bn_in_head,
             norm_last_layer=norm_last_layer,
         )
+
+        self.loss_fn = DINOLoss(
+            output_dim=self.projection_dim,
+            warmup_teacher_temp_epochs=5,
+        )
+        
+        self.optimizer = Adam
+
+        self.transform = DINOTransform()
 
     def forward(self, x):
         """Extract features from the backbone"""
@@ -165,6 +186,7 @@ class SimCLR(LightlySSLModel):
         projection_dim: int = 128,
         pretrained: bool = False,
         temperature: float = 0.5,
+        optimizer: dict = {},
         *args,
         **kwargs,
     ):
@@ -182,11 +204,18 @@ class SimCLR(LightlySSLModel):
         # Store temperature for loss calculation
         self.temperature = temperature
 
+        self.loss_fn = AugLossWrapper(NTXentLoss(temperature=self.temperature))
+
+        self.optimizer = Adam
+
+        self.transform = SimCLRTransform()
+
     def forward(self, x):
-        print("x.shape", x.shape)
+        x = self.transform(x)
+
         if self.training:
             # During training, return the full SimCLR model output
-            return self.model(x)
+            return self.model(*x)
         else:
             # During inference, return only the backbone features
             return self.model.backbone(x)
@@ -206,6 +235,7 @@ class BarlowTwins(LightlySSLModel):
         pretrained: bool = False,
         lambda_param: float = 0.0051,
         input_size: int = 224,
+        optimizer: dict = {},
         *args,
         **kwargs,
     ):
@@ -232,6 +262,15 @@ class BarlowTwins(LightlySSLModel):
 
         # Store lambda parameter for loss calculation
         self.lambda_param = lambda_param
+    
+        self.loss_fn = BarlowTwinsLoss(lambda_param=self.lambda_param)
+      
+        self.optimizer = Adam
+
+        self.transform = BYOLTransform(
+            view_1_transform=BYOLView1Transform(input_size=224, gaussian_blur=0.0),
+            view_2_transform=BYOLView2Transform(input_size=224, gaussian_blur=0.0),
+        )
 
     def forward(self, x):
         if self.training:
@@ -256,6 +295,7 @@ class BYOL(LightlySSLModel):
         pretrained: bool = False,
         momentum_tau: float = 0.996,
         input_size: int = 224,
+        optimizer: dict = {},
         *args,
         **kwargs,
     ):
@@ -279,6 +319,15 @@ class BYOL(LightlySSLModel):
             num_ftrs=self.num_ftrs,
             out_dim=projection_dim,
             m=momentum_tau,
+        )
+
+        self.loss_fn = NegativeCosineSimilarity()
+
+        self.optimizer = Adam
+
+        self.transform = BYOLTransform(
+            view_1_transform=BYOLView1Transform(input_size=224, gaussian_blur=0.0),
+            view_2_transform=BYOLView2Transform(input_size=224, gaussian_blur=0.0),
         )
 
     def forward(self, x):
@@ -306,6 +355,7 @@ class MoCo(LightlySSLModel):
         temperature: float = 0.1,
         queue_size: int = 65536,
         use_momentum_encoder: bool = True,
+        optimizer: dict = {},
         *args,
         **kwargs,
     ):
@@ -322,6 +372,12 @@ class MoCo(LightlySSLModel):
             temperature=temperature,
             queue_size=queue_size,
         )
+
+        self.loss_fn = NTXentLoss(memory_bank_size=self.model.queue_size)
+
+        self.optimizer = Larc
+
+        self.transform = MoCoV2Transform()
 
     def forward(self, x):
         if self.training:
@@ -371,6 +427,10 @@ class MoCoV3(LightlySSLModel):
             temperature=temperature,
             use_predictor=use_predictor,
         )
+
+        self.loss_fn = NTXentLoss(memory_bank_size=self.model.queue_size)
+
+        self.transform = MoCoV2Transform()
 
     def forward(self, x):
         if self.training:

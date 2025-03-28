@@ -17,14 +17,6 @@ from sklearn.mixture import GaussianMixture
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from lightly.transforms.simclr_transform import SimCLRTransform
-from lightly.transforms.moco_transform import MoCoV2Transform
-from lightly.transforms.dino_transform import DINOTransform
-from lightly.transforms.byol_transform import (
-    BYOLTransform,
-    BYOLView1Transform,
-    BYOLView2Transform,
-)
 
 from bridge.data.datamodule import HuggingFaceDataModule
 from bridge.detectors.ood_detector import OODDetector
@@ -56,6 +48,8 @@ class BRIDGETrainer:
 
         # Create model
         self.model = self.create_model()
+
+        print(self.model)
 
         # Create callbacks
         self.callbacks = self.create_callbacks()
@@ -156,30 +150,19 @@ class BRIDGETrainer:
         learner = Learner(
             self.data_module.train_dls,
             self.model,
-            loss_func=None,  # SSL models usually have their own loss
+            loss_func=self.model.loss_fn,
             metrics=[],
             path=Path(self.output_dir),
             model_dir=f"cycle_{cycle_idx}",
             cbs=self.callbacks,
+            opt_func=self.model.optimizer,
+            wd=self.cfg.model.optimizer.get('weight_decay', 0.0),
         )
 
         learner.path = Path(os.environ.get("BASE_CACHE_DIR", "/tmp"))
 
         # Train for specified number of epochs
         with learner.distrib_ctx():
-            print(f"Inside context: {next(learn.model.parameters()).device}")
-
-            def device_debug_hook(m, i, o):
-                print(
-                    f"Input devices: {[x.device if isinstance(x, torch.Tensor) else 'non-tensor' for x in i]}"
-                )
-                print(
-                    f"Output device: {o.device if isinstance(o, torch.Tensor) else 'non-tensor'}"
-                )
-
-            # Register the hook on specific layers
-            learn.model[0].register_forward_hook(device_debug_hook)
-
             learner.fit(num_epochs, lr=self.cfg.model.optimizer.lr)
 
         # Save model
